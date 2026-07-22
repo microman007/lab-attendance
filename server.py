@@ -1,13 +1,22 @@
 import os
 import json
+import base64
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify, render_template_string
 import gspread
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import io
 
 app = Flask(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+DRIVE_FOLDER_ID = "1v78xmQXfQ8C-gkljXRHYLvktukjfdMrq"
 
 try:
     credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
@@ -19,9 +28,47 @@ try:
     
     client = gspread.authorize(creds)
     sheet = client.open("Lab Attendance").sheet1
-    print("Connected to Google Sheets successfully!")
+    
+    # Initialize Google Drive API client
+    drive_service = build('drive', 'v3', credentials=creds)
+    print("Connected to Google Sheets & Drive successfully!")
 except Exception as e:
-    print(f"Google Sheets Connection Error: {e}")
+    print(f"Google Connection Error: {e}")
+
+def upload_base64_to_drive(base64_data, filename):
+    try:
+        if "," in base64_data:
+            base64_data = base64_data.split(",")[1]
+        
+        image_bytes = base64.b64decode(base64_data)
+        fh = io.BytesIO(image_bytes)
+        
+        file_metadata = {
+            'name': filename,
+            'parents': [DRIVE_FOLDER_ID]
+        }
+        media = MediaIoBaseUpload(fh, mimetype='image/jpeg', resumable=True)
+        
+        file = drive_service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, webContentLink, webViewLink'
+        ).execute()
+        
+        file_id = file.get('id')
+        
+        # Make the file publicly accessible so Google Sheets can render it
+        drive_service.permissions().create(
+            fileId=file_id,
+            body={'role': 'reader', 'type': 'anyone'}
+        ).execute()
+        
+        # Construct a direct export/thumbnail link compatible with Google Sheets =IMAGE()
+        direct_url = f"https://drive.google.com/uc?export=view&id={file_id}"
+        return direct_url
+    except Exception as e:
+        print(f"Drive Upload Error: {e}")
+        return ""
 
 @app.route("/")
 def index():
@@ -39,17 +86,22 @@ def process_attendance(action):
         lon = data.get("longitude") or data.get("lon")
         image_data = data.get("image") or data.get("face_image")
 
-        # Explicitly use Indian Standard Time (IST: UTC +5:30)
         IST = timezone(timedelta(hours=5, minutes=30))
         now = datetime.now(IST)
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
         
-        # Name photo files cleanly based on timestamp and action
         action_label = "IN" if action == "in" else "OUT"
         file_suffix = now.strftime("%Y%m%d_%H%M%S")
-        photo_filename = f"attendance_captures/{user_id}_{action_label}_{file_suffix}.jpg"
+        photo_filename = f"{user_id}_{action_label}_{file_suffix}.jpg"
         
-        img_formula = f'=IMAGE("{image_data}")' if image_data and len(image_data) < 50000 else photo_filename
+        # Upload image to Drive and generate a proper image formula
+        img_formula = ""
+        if image_data:
+            public_url = upload_base64_to_drive(image_data, photo_filename)
+            if public_url:
+                img_formula = f'=IMAGE("{public_url}")'
+            else:
+                img_formula = photo_filename
 
         records = sheet.get_all_records()
 
@@ -81,7 +133,6 @@ def process_attendance(action):
                 return jsonify({"status": "error", "message": "No active Check-In found. Please Check In first."}), 400
 
             try:
-                # Parse check-in time assuming it was saved in IST format
                 check_in_time = datetime.strptime(check_in_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
                 hours_present = round((now - check_in_time).total_seconds() / 3600, 2)
                 hours_str = f"{hours_present} hrs"
