@@ -35,10 +35,32 @@ try:
 except Exception as e:
     print(f"Google Connection Error: {e}")
 
-def upload_base64_to_drive(base64_data, filename):
-    # Simply return the filename string to keep Google Sheets logs clean and error-free
-    return filename
+FOLDER_ID = "1v78xmQXfQ8C-gkljXRLyLVktukjfDMrq"
 
+def upload_base64_to_drive(base64_data, filename):
+    try:
+        if "," in base64_data:
+            base64_data = base64_data.split(",")[1]
+            
+        image_bytes = base64.b64decode(base64_data)
+        
+        file_metadata = {
+            'name': filename,
+            'parents': [FOLDER_ID] # Uploads directly into your personal shared folder!
+        }
+        
+        media = MediaIoBaseUpload(io.BytesIO(image_bytes), mimetype='image/jpeg', resumable=True)
+        
+        file = drive_service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, webContentLink, webViewLink'
+        ).execute()
+        
+        return filename
+    except Exception as e:
+        print(f"Drive Upload Error: {e}")
+        return filename
 @app.route("/")
 def index():
     with open("index.html", "r", encoding="utf-8") as f:
