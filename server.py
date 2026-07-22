@@ -35,7 +35,7 @@ try:
 except Exception as e:
     print(f"Google Connection Error: {e}")
 
-FOLDER_ID = "1v78xmQXfQ8C-gkljXRLyLVktukjfDMrq"
+FOLDER_ID = "1v78xmQXfQ8C-gkljXRHYLvktukjfdMrq"
 
 def upload_base64_to_drive(base64_data, filename):
     try:
@@ -46,7 +46,7 @@ def upload_base64_to_drive(base64_data, filename):
         
         file_metadata = {
             'name': filename,
-            'parents': [FOLDER_ID] # Uploads directly into your personal shared folder!
+            'parents': [FOLDER_ID]
         }
         
         media = MediaIoBaseUpload(io.BytesIO(image_bytes), mimetype='image/jpeg', resumable=True)
@@ -61,6 +61,7 @@ def upload_base64_to_drive(base64_data, filename):
     except Exception as e:
         print(f"Drive Upload Error: {e}")
         return filename
+
 @app.route("/")
 def index():
     with open("index.html", "r", encoding="utf-8") as f:
