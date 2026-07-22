@@ -1,124 +1,105 @@
-from flask import Flask, request, jsonify
 import os
 import json
-from datetime import datetime
 import base64
+from datetime import datetime
+from flask import Flask, request, jsonify, render_template_string
 import gspread
+from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
 
-# --- GOOGLE SHEETS & SECURE CREDENTIALS SETUP ---
-GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1ooYMNLndxhy1BWrIC8PfpIUKW_MtVHLVZHlhmoi05zE/edit?usp=sharing"
+# Google Sheets Setup (Dual-mode: Local file or Render Environment Variable)
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
-def get_gspread_client():
-    try:
-        # Check if environment variable exists (Render deployment)
-        if "GOOGLE_CREDENTIALS_JSON" in os.environ:
-            creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
-            gc = gspread.service_account_from_dict(creds_dict)
-        else:
-            # Fallback to local file for testing on your PC
-            CREDENTIALS_FILE = "lab-attendance-503206-eec19b2056bc.json"
-            gc = gspread.service_account(filename=CREDENTIALS_FILE)
-        
-        sheet_instance = gc.open_by_url(GOOGLE_SHEET_URL).sheet1
-        print("Connected to Google Sheets successfully!")
-        return sheet_instance
-    except Exception as e:
-        print(f"Warning: Could not connect to Google Sheets. Error: {e}")
-        return None
+try:
+    credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    if credentials_json:
+        creds_dict = json.loads(credentials_json)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    else:
+        creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+    
+    client = gspread.authorize(creds)
+    sheet = client.open("Lab Attendance").sheet1
+    print("Connected to Google Sheets successfully!")
+except Exception as e:
+    print(f"Google Sheets Connection Error: {e}")
 
-sheet = get_gspread_client()
-
-@app.route('/')
+@app.route("/")
 def index():
-    with open('index.html', 'r', encoding='utf-8') as f:
-        return f.read()
+    with open("index.html", "r", encoding="utf-8") as f:
+        return render_template_string(f.read())
 
-@app.route('/checkin', methods=['POST'])
-def checkin():
-    global sheet
-    if not sheet:
-        sheet = get_gspread_client()
-        if not sheet:
-            return jsonify({"status": "error", "message": "Google Sheets connection unavailable."}), 500
-
-    data = request.get_json()
-    user_lat = data.get('lat')
-    user_lon = data.get('lon')
-    action = data.get('action', 'IN') # 'IN' or 'OUT'
-    face_image_data = data.get('face_image')
-    
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    user_id = "Arvind"
-    today_date = datetime.now().strftime('%Y-%m-%d')
-    
-    filename = "N/A"
-    if face_image_data:
-        try:
-            header, encoded = face_image_data.split(",", 1)
-            image_bytes = base64.b64decode(encoded)
-            os.makedirs('attendance_captures', exist_ok=True)
-            filename = f"attendance_captures/{user_id}_{action}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-            with open(filename, "wb") as fh:
-                fh.write(image_bytes)
-        except Exception as e:
-            print(f"Failed to save face image: {e}")
-    
-    # Updated headers to include Photo column (Column H)
-    expected_header = ['User ID', 'Check In', 'Check Out', 'Hours Present', 'Latitude', 'Longitude', 'Status', 'Photo']
-    
+@app.route("/attendance", methods=["POST"])
+def handle_attendance():
     try:
-        rows = sheet.get_all_values()
-    except Exception:
-        rows = []
+        data = request.json
+        action = data.get("action")  # 'in' or 'out'
+        user_id = data.get("user_id", "Arvind")
+        lat = data.get("latitude")
+        lon = data.get("longitude")
+        image_data = data.get("image")  # Base64 string from webcam
 
-    if not rows:
-        sheet.append_row(expected_header)
-        rows = [expected_header]
-    elif rows[0] != expected_header:
-        sheet.update(range_name='A1:H1', values=[expected_header])
-        rows[0] = expected_header
+        now = datetime.now()
+        timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Format image for Google Sheets IMAGE() formula if provided
+        img_formula = f'=IMAGE("{image_data}")' if image_data else ""
 
-    user_row_index = -1
-    for i in range(1, len(rows)):
-        if rows[i][0] == user_id and rows[i][1].startswith(today_date):
-            if rows[i][2] == '': 
-                user_row_index = i + 1 
-                break
+        records = sheet.get_all_records()
 
-    if action == 'IN':
-        if user_row_index != -1:
-            return jsonify({"status": "error", "message": "Already checked in today! Please Check Out later."}), 400
-        else:
-            new_row = [user_id, timestamp, '', '', user_lat, user_lon, 'Checked In', filename]
-            sheet.append_row(new_row)
+        if action == "in":
+            # Check if there is an active session (Checked In without Check Out)
+            active_row = None
+            for idx, row in enumerate(records, start=2): # Row 2 is first data row
+                if str(row.get("User ID")) == str(user_id) and not row.get("Check Out"):
+                    active_row = idx
+                    break
             
-    elif action == 'OUT':
-        if user_row_index != -1:
-            check_in_time_str = rows[user_row_index - 1][1]
+            if active_row:
+                return jsonify({"status": "error", "message": "Already Checked In! Please Check Out first."}), 400
+
+            # Append new row for Check-In
+            # Columns: User ID (A), Check In (B), Check Out (C), Hours (D), Lat (E), Lon (F), Status (G), Check-In Photo (H), Check-Out Photo (I)
+            row_data = [user_id, timestamp, "", "", lat, lon, "Checked In", img_formula, ""]
+            sheet.append_row(row_data, value_input_option='USER_ENTERED')
+            return jsonify({"status": "success", "message": "Successfully Checked IN!"})
+
+        elif action == "out":
+            # Find the active check-in row
+            active_row = None
+            check_in_time_str = None
+            for idx, row in enumerate(records, start=2):
+                if str(row.get("User ID")) == str(user_id) and not row.get("Check Out"):
+                    active_row = idx
+                    check_in_time_str = row.get("Check In")
+                    break
             
-            hours_str = "Error Calc"
+            if not active_row:
+                return jsonify({"status": "error", "message": "No active Check-In found. Please Check In first."}), 400
+
+            # Calculate hours present
             try:
-                fmt = '%Y-%m-%d %H:%M:%S'
-                in_time = datetime.strptime(check_in_time_str, fmt)
-                out_time = datetime.strptime(timestamp, fmt)
-                diff_seconds = (out_time - in_time).total_seconds()
-                hours = round(diff_seconds / 3600, 2)
-                hours_str = f"{hours} hrs"
+                check_in_time = datetime.strptime(check_in_time_str, "%Y-%m-%d %H:%M:%S")
+                hours_present = round((now - check_in_time).total_seconds() / 3600, 2)
+                hours_str = f"{hours_present} hrs"
             except Exception:
-                pass
+                hours_str = "0 hrs"
 
-            sheet.update_cell(user_row_index, 3, timestamp)       # Check Out
-            sheet.update_cell(user_row_index, 4, hours_str)       # Hours Present
-            sheet.update_cell(user_row_index, 7, 'Completed')     # Status
-            sheet.update_cell(user_row_index, 8, filename)        # Photo path
-        else:
-            new_row = [user_id, '', timestamp, 'N/A', user_lat, user_lon, 'Checked Out Only', filename]
-            sheet.append_row(new_row)
+            # Update Check Out (Col C), Hours (Col D), Status (Col G), and Check-Out Photo (Col I)
+            sheet.update_cell(active_row, 3, timestamp)
+            sheet.update_cell(active_row, 4, hours_str)
+            sheet.update_cell(active_row, 7, "Completed")
+            if img_formula:
+                sheet.update_cell(active_row, 9, img_formula)
 
-    print(f"[{timestamp}] Attendance {action} logged live to Google Sheet for {user_id}")
-    return jsonify({"status": "success", "message": f"Successfully Checked {action} with Face & Biometric verified!"}), 200
+            return jsonify({"status": "success", "message": "Successfully Checked OUT!"})
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+        return jsonify({"status": "error", "message": "Invalid action."}), 400
+
+    except Exception as e:
+        print(f"Error handling attendance: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
