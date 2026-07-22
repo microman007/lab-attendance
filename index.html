@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Lab Attendance System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        h2 { color: #333; margin-bottom: 10px; }
+        .subtitle { font-size: 13px; color: #666; margin-bottom: 20px; }
+        button {
+            width: 100%;
+            padding: 14px;
+            margin: 10px 0;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .btn-in { background-color: #28a745; color: white; }
+        .btn-in:hover { background-color: #218838; }
+        .btn-out { background-color: #dc3545; color: white; }
+        .btn-out:hover { background-color: #c82333; }
+        #status {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #555;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Lab Attendance</h2>
+        <div class="subtitle">GPS + Hardware Biometric + Facial Verification</div>
+        
+        <button class="btn-in" onclick="handleAttendance('IN')">Check In (Secure)</button>
+        <button class="btn-out" onclick="handleAttendance('OUT')">Check Out (Secure)</button>
+        
+        <div id="status">Ready...</div>
+    </div>
+
+    <!-- Hidden Video & Canvas for mandatory face capture -->
+    <div style="display:none;">
+        <video id="video" width="320" height="240" autoplay playsinline></video>
+        <canvas id="canvas" width="320" height="240"></canvas>
+    </div>
+
+    <script>
+        async function captureFace() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                
+                await new Promise(resolve => setTimeout(resolve, 800));
+
+                const canvas = document.getElementById('canvas');
+                const context = canvas.getContext('2d');
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const imageDataURL = canvas.toDataURL('image/jpeg', 0.8);
+                stream.getTracks().forEach(track => track.stop());
+                return imageDataURL;
+            } catch (err) {
+                throw new Error("Camera access is mandatory for attendance snapshot verification.");
+            }
+        }
+
+        async function handleAttendance(action) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerText = "📸 Activating front camera for facial capture...";
+
+            try {
+                const faceImage = await captureFace();
+
+                statusDiv.innerText = "📍 Verifying GPS coordinates...";
+
+                if (!navigator.geolocation) {
+                    alert("Geolocation is not supported by your device browser.");
+                    return;
+                }
+
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { 
+                        enableHighAccuracy: true, timeout: 10000, maximumAge: 0 
+                    });
+                });
+
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+
+                statusDiv.innerText = "🔒 Scan fingerprint / face to authorize...";
+
+                const publicKey = {
+                    challenge: Uint8Array.from("lab_attendance_secure_salt", c => c.charCodeAt(0)),
+                    rp: { name: "Lab Attendance System" },
+                    user: {
+                        id: Uint8Array.from("Arvind_ID_Key", c => c.charCodeAt(0)),
+                        name: "Arvind Kayande",
+                        displayName: "Arvind"
+                    },
+                    pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
+                    timeout: 60000,
+                    authenticatorSelection: { 
+                        authenticatorAttachment: "platform",
+                        userVerification: "required",
+                        residentKey: "preferred"
+                    },
+                    attestation: "none"
+                };
+
+                await navigator.credentials.create({ publicKey });
+
+                statusDiv.innerText = "☁️ All verifications passed! Syncing to cloud...";
+
+                const response = await fetch('/checkin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lat, lon, action, face_image: faceImage })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    statusDiv.innerText = "✅ " + result.message;
+                } else {
+                    statusDiv.innerText = "❌ " + result.message;
+                }
+
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerText = "❌ Verification failed or was cancelled: " + (error.message || "");
+            }
+        }
+    </script>
+</body>
+</html>
