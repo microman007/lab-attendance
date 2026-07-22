@@ -52,19 +52,22 @@ def upload_base64_to_drive(base64_data, filename):
         file = drive_service.files().create(
             body=file_metadata,
             media_body=media,
-            fields='id, webContentLink, webViewLink'
+            fields='id, webContentLink'
         ).execute()
         
         file_id = file.get('id')
         
         # Make the file publicly accessible so Google Sheets can render it
-        drive_service.permissions().create(
-            fileId=file_id,
-            body={'role': 'reader', 'type': 'anyone'}
-        ).execute()
-        
-        # Construct a direct export/thumbnail link compatible with Google Sheets =IMAGE()
-        direct_url = f"https://drive.google.com/uc?export=view&id={file_id}"
+        try:
+            drive_service.permissions().create(
+                fileId=file_id,
+                body={'role': 'reader', 'type': 'anyone'}
+            ).execute()
+        except Exception as perm_err:
+            print(f"Permission grant warning: {perm_err}")
+
+        # Construct a direct download link compatible with Google Sheets =IMAGE()
+        direct_url = f"https://drive.google.com/uc?export=download&id={file_id}"
         return direct_url
     except Exception as e:
         print(f"Drive Upload Error: {e}")
