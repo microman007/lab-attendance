@@ -28,24 +28,20 @@ def index():
     with open("index.html", "r", encoding="utf-8") as f:
         return render_template_string(f.read())
 
-@app.route("/attendance", methods=["POST"])
-def handle_attendance():
+def process_attendance(action):
     try:
         data = request.json
         if not data:
             return jsonify({"status": "error", "message": "No JSON payload received."}), 400
 
-        action = data.get("action")  # 'in' or 'out'
         user_id = data.get("user_id", "Arvind")
         lat = data.get("latitude")
         lon = data.get("longitude")
-        image_data = data.get("image")  # Base64 string from frontend
+        image_data = data.get("image")
 
         now = datetime.now()
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
         
-        # Safely truncate or format image data to prevent Google Sheets formula overflow errors
-        # If it's a base64 string, we can use it inside an IMAGE formula or save a clear status tag
         img_formula = f'=IMAGE("{image_data}")' if image_data and len(image_data) < 50000 else "Captured Photo"
 
         records = sheet.get_all_records()
@@ -60,8 +56,7 @@ def handle_attendance():
             if active_row:
                 return jsonify({"status": "error", "message": "Already Checked In! Please Check Out first."}), 400
 
-            # Columns expected in Sheet:
-            # A: User ID, B: Check In, C: Check Out, D: Hours Present, E: Latitude, F: Longitude, G: Status, H: Check-In Photo, I: Check-Out Photo
+            # Columns: User ID(A), Check In(B), Check Out(C), Hours(D), Lat(E), Lon(F), Status(G), Check-In Photo(H), Check-Out Photo(I)
             row_data = [user_id, timestamp, "", "", lat, lon, "Checked In", img_formula, ""]
             sheet.append_row(row_data, value_input_option='USER_ENTERED')
             return jsonify({"status": "success", "message": "Successfully Checked IN!"})
@@ -85,7 +80,6 @@ def handle_attendance():
             except Exception:
                 hours_str = "0 hrs"
 
-            # Update Check Out (Col C), Hours (Col D), Status (Col G), and Check-Out Photo (Col I)
             sheet.update_cell(active_row, 3, timestamp)
             sheet.update_cell(active_row, 4, hours_str)
             sheet.update_cell(active_row, 7, "Completed")
@@ -99,6 +93,21 @@ def handle_attendance():
     except Exception as e:
         print(f"Error handling attendance: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# Support all common endpoint variations used by frontends
+@app.route("/attendance", methods=["POST"])
+def attendance_route():
+    data = request.json or {}
+    action = data.get("action", "in")
+    return process_attendance(action)
+
+@app.route("/checkin", methods=["POST"])
+def checkin_route():
+    return process_attendance("in")
+
+@app.route("/checkout", methods=["POST"])
+def checkout_route():
+    return process_attendance("out")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
