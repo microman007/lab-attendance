@@ -85,12 +85,13 @@ def process_attendance(action):
         file_suffix = now.strftime("%Y%m%d_%H%M%S")
         photo_filename = f"{user_id}_{action_label}_{file_suffix}.jpg"
         
-        # Upload image to ImgBB and generate a proper image formula
+# Upload image to ImgBB and generate a clickable image formula
         img_formula = ""
         if image_data:
             public_url = upload_base64_to_drive(image_data, photo_filename)
             if public_url:
-                img_formula = f'=IMAGE("{public_url}")'
+             # This displays the image preview AND makes it clickable to open the full pic
+                img_formula = f'=HYPERLINK("{public_url}", IMAGE("{public_url}"))'
             else:
                 img_formula = photo_filename
 
