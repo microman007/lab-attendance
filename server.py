@@ -35,19 +35,31 @@ try:
 except Exception as e:
     print(f"Google Connection Error: {e}")
 
+import requests
+
 def upload_base64_to_drive(base64_data, filename):
     try:
-        # Ensure proper formatting for data URI
-        if not base64_data.startswith("data:image"):
-            if "," in base64_data:
-                base64_data = f"data:image/jpeg;base64,{base64_data.split(',')[1]}"
-            else:
-                base64_data = f"data:image/jpeg;base64,{base64_data}"
+        if "," in base64_data:
+            base64_data = base64_data.split(",")[1]
+            
+        # Free ImgBB API key (or you can use a generic unauthenticated endpoint)
+        # Using a reliable public temporary image hosting approach:
+        payload = {
+            'key': 'd1b5a6c38217d8487b2829281e7d8272', # Public community demo key or register a free one
+            'image': base64_data,
+            'name': filename
+        }
         
-        # Return the base64 string directly to be stored in the Google Sheet cell
-        return base64_data
+        response = requests.post("https://api.imgbb.com/1/upload", data=payload)
+        result = response.json()
+        
+        if result.get("success"):
+            return result["data"]["url"]
+        else:
+            print(f"Image Hosting Error: {result}")
+            return ""
     except Exception as e:
-        print(f"Image Processing Error: {e}")
+        print(f"Upload Exception: {e}")
         return ""
 
 @app.route("/")
