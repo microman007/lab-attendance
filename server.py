@@ -43,27 +43,21 @@ def upload_base64_to_drive(base64_data, filename):
         image_bytes = base64.b64decode(base64_data)
         fh = io.BytesIO(image_bytes)
         
-        # 1. Create metadata-only file shell in the target folder (bypasses quota check)
         file_metadata = {
             'name': filename,
             'parents': [DRIVE_FOLDER_ID]
         }
         
+        # Use resumable=False with standard stream to ensure bytes write correctly in one go
+        media = MediaIoBaseUpload(fh, mimetype='image/jpeg', resumable=False)
+        
         file = drive_service.files().create(
             body=file_metadata,
+            media_body=media,
             fields='id'
         ).execute()
         
         file_id = file.get('id')
-        
-        # 2. Stream the image bytes into the created file ID
-        media = MediaIoBaseUpload(fh, mimetype='image/jpeg', resumable=False)
-        drive_service.files().update(
-            fileId=file_id,
-            media_body=media
-        ).execute()
-
-        # 3. Return the direct thumbnail link for Google Sheets
         return f"https://drive.google.com/thumbnail?id={file_id}&sz=w1000"
     except Exception as e:
         print(f"Drive Upload Error: {e}")
