@@ -3,71 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Lab Attendance System</title>
+    <title>Biometric Lab Attendance - Fungal Biology & Plant Genetic Engineering Lab</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f6f9;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0b0f19 0%, #111e38 100%);
+            color: #e2e8f0;
             margin: 0;
             padding: 20px;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
         }
         .card {
-            background: white;
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(56, 189, 248, 0.2);
             padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 15px rgba(56, 189, 248, 0.1);
             width: 100%;
-            max-width: 400px;
+            max-width: 440px;
             text-align: center;
         }
-        h2 { color: #333; margin-bottom: 10px; }
-        .subtitle { font-size: 13px; color: #666; margin-bottom: 20px; }
+        .lab-badge {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #38bdf8;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        h2 { 
+            color: #f8fafc; 
+            margin: 0 0 5px 0; 
+            font-size: 22px;
+        }
+        .subtitle { 
+            font-size: 12px; 
+            color: #94a3b8; 
+            margin-bottom: 25px; 
+        }
+        .hud-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
         button {
             width: 100%;
             padding: 14px;
-            margin: 10px 0;
-            font-size: 16px;
+            margin: 6px 0;
+            font-size: 15px;
             font-weight: bold;
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
-        .btn-in { background-color: #28a745; color: white; }
-        .btn-in:hover { background-color: #218838; }
-        .btn-out { background-color: #dc3545; color: white; }
-        .btn-out:hover { background-color: #c82333; }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+        }
+        .btn-in { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; grid-column: span 2; }
+        .btn-out { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; grid-column: span 2; }
+        .btn-leave { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; grid-column: span 2; }
+        
         #status {
-            margin-top: 15px;
-            font-size: 14px;
-            color: #555;
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            color: #38bdf8;
             font-weight: 500;
+            min-height: 20px;
+        }
+        .scanner-visual {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 15px auto;
+            border: 2px dashed #38bdf8;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
         }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h2>Lab Attendance</h2>
-        <div class="subtitle">GPS + Hardware Biometric + Facial Verification</div>
+        <div class="lab-badge">Fungal Biology & Plant Genetic Engineering Lab</div>
+        <h2>Biometric Attendance HUD</h2>
+        <div class="subtitle">Secure Facial Recognition + GPS + Hardware Token</div>
         
-        <button class="btn-in" onclick="handleAttendance('in')">Check In (Secure)</button>
-        <button class="btn-out" onclick="handleAttendance('out')">Check Out (Secure)</button>
+        <div class="scanner-visual">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20M12 2v20"></path></svg>
+        </div>
+
+        <button class="btn-in" onclick="handleAttendance('in')">🟢 Check In (Lab Bounds)</button>
+        <button class="btn-out" onclick="handleAttendance('out')">🔴 Check Out</button>
+        <button class="btn-leave" onclick="handleLeave()">🟡 Apply Leave / Absent (Remote)</button>
         
-        <div id="status">Ready...</div>
+        <div id="status">System Online. Ready for verification.</div>
     </div>
 
-    <!-- Hidden Video & Canvas for mandatory face capture -->
+    <!-- Hidden Video & Canvas for face capture -->
     <div style="display:none;">
         <video id="video" width="320" height="240" autoplay playsinline></video>
         <canvas id="canvas" width="320" height="240"></canvas>
     </div>
 
     <script>
+        // Lab coordinates boundary verification (example center coordinates, adjust if needed)
+        const LAB_LAT = 26.6250;
+        const LAB_LON = 75.0264;
+        const MAX_DISTANCE_METERS = 150; // Allowable radius
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth radius in meters
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c;
+        }
+
         async function captureFace() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
@@ -84,18 +161,18 @@
                 stream.getTracks().forEach(track => track.stop());
                 return imageDataURL;
             } catch (err) {
-                throw new Error("Camera access is mandatory for attendance snapshot verification.");
+                throw new Error("Camera access is mandatory for facial verification.");
             }
         }
 
         async function handleAttendance(action) {
             const statusDiv = document.getElementById('status');
-            statusDiv.innerText = "📸 Activating front camera for facial capture...";
+            statusDiv.innerText = "📸 Activating camera for facial capture...";
 
             try {
                 const faceImage = await captureFace();
 
-                statusDiv.innerText = "📍 Verifying GPS coordinates...";
+                statusDiv.innerText = "📍 Verifying GPS coordinates against lab perimeter...";
 
                 if (!navigator.geolocation) {
                     alert("Geolocation is not supported by your device browser.");
@@ -111,11 +188,19 @@
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
 
-                statusDiv.innerText = "🔒 Scan fingerprint / face to authorize...";
+                // Check distance from lab
+                const distance = calculateDistance(lat, lon, LAB_LAT, LAB_LON);
+                if (distance > MAX_DISTANCE_METERS) {
+                    statusDiv.innerText = `❌ GPS Error: You are out of the lab area! (~${Math.round(distance)}m away)`;
+                    alert(`Access Denied: You are outside the lab perimeter (~${Math.round(distance)} meters away). Please move inside the lab to check in/out.`);
+                    return;
+                }
+
+                statusDiv.innerText = "🔒 Authenticating hardware biometric token...";
 
                 const publicKey = {
                     challenge: Uint8Array.from("lab_attendance_secure_salt", c => c.charCodeAt(0)),
-                    rp: { name: "Lab Attendance System" },
+                    rp: { name: "Fungal Biology Lab Attendance" },
                     user: {
                         id: Uint8Array.from("Arvind_ID_Key", c => c.charCodeAt(0)),
                         name: "Arvind Kayande",
@@ -133,9 +218,8 @@
 
                 await navigator.credentials.create({ publicKey });
 
-                statusDiv.innerText = "☁️ All verifications passed! Syncing to cloud...";
+                statusDiv.innerText = "☁️ Verification passed! Syncing with cloud sheet...";
 
-                // Dynamically send to the correct endpoint based on action button clicked
                 const endpoint = action === 'in' ? '/checkin' : '/checkout';
 
                 const response = await fetch(endpoint, {
@@ -153,7 +237,32 @@
 
             } catch (error) {
                 console.error(error);
-                statusDiv.innerText = "❌ Verification failed or was cancelled: " + (error.message || "");
+                statusDiv.innerText = "❌ Operation cancelled or failed: " + (error.message || "");
+            }
+        }
+
+        async function handleLeave() {
+            const statusDiv = document.getElementById('status');
+            const reason = prompt("Enter Leave Reason (e.g., Medical Leave, Academic Conference, Out of Station):", "Casual Leave");
+            if (!reason) return;
+
+            statusDiv.innerText = "☁️ Submitting leave status to cloud...";
+
+            try {
+                const response = await fetch('/leave', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'leave', leave_reason: reason })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    statusDiv.innerText = "✅ " + result.message;
+                } else {
+                    statusDiv.innerText = "❌ " + result.message;
+                }
+            } catch (error) {
+                statusDiv.innerText = "❌ Leave submission failed: " + error.message;
             }
         }
     </script>
