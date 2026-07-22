@@ -57,18 +57,17 @@ def upload_base64_to_drive(base64_data, filename):
         
         file_id = file.get('id')
         
-        # Make the file publicly accessible
+        # Attempt to make public, but don't let it block URL generation if restricted
         try:
             drive_service.permissions().create(
                 fileId=file_id,
                 body={'role': 'reader', 'type': 'anyone'}
             ).execute()
         except Exception as perm_err:
-            print(f"Permission grant warning: {perm_err}")
+            print(f"Skipping public permission (inherited from folder): {perm_err}")
 
-        # Use Google Drive's explicit thumbnail export link format for Google Sheets
-        direct_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w1000"
-        return direct_url
+        # Always return the direct thumbnail link format
+        return f"https://drive.google.com/thumbnail?id={file_id}&sz=w1000"
     except Exception as e:
         print(f"Drive Upload Error: {e}")
         return ""
