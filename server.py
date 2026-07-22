@@ -54,7 +54,8 @@ def upload_base64_to_drive(base64_data, filename):
         file = drive_service.files().create(
             body=file_metadata,
             media_body=media,
-            fields='id, webContentLink, webViewLink'
+            fields='id, webContentLink, webViewLink',
+            supports_all_drives=True
         ).execute()
         
         return filename
