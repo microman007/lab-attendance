@@ -43,30 +43,27 @@ def upload_base64_to_drive(base64_data, filename):
         image_bytes = base64.b64decode(base64_data)
         fh = io.BytesIO(image_bytes)
         
+        # 1. Create metadata-only file shell in the target folder (bypasses quota check)
         file_metadata = {
             'name': filename,
             'parents': [DRIVE_FOLDER_ID]
         }
-        media = MediaIoBaseUpload(fh, mimetype='image/jpeg', resumable=True)
         
         file = drive_service.files().create(
             body=file_metadata,
-            media_body=media,
             fields='id'
         ).execute()
         
         file_id = file.get('id')
         
-        # Attempt to make public, but don't let it block URL generation if restricted
-        try:
-            drive_service.permissions().create(
-                fileId=file_id,
-                body={'role': 'reader', 'type': 'anyone'}
-            ).execute()
-        except Exception as perm_err:
-            print(f"Skipping public permission (inherited from folder): {perm_err}")
+        # 2. Stream the image bytes into the created file ID
+        media = MediaIoBaseUpload(fh, mimetype='image/jpeg', resumable=False)
+        drive_service.files().update(
+            fileId=file_id,
+            media_body=media
+        ).execute()
 
-        # Always return the direct thumbnail link format
+        # 3. Return the direct thumbnail link for Google Sheets
         return f"https://drive.google.com/thumbnail?id={file_id}&sz=w1000"
     except Exception as e:
         print(f"Drive Upload Error: {e}")
