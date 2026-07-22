@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify, render_template_string
 import gspread
 from google.oauth2.service_account import Credentials
@@ -35,21 +35,28 @@ def process_attendance(action):
             return jsonify({"status": "error", "message": "No JSON payload received."}), 400
 
         user_id = data.get("user_id", "Arvind")
-        lat = data.get("latitude")
-        lon = data.get("longitude")
-        image_data = data.get("image")
+        lat = data.get("latitude") or data.get("lat")
+        lon = data.get("longitude") or data.get("lon")
+        image_data = data.get("image") or data.get("face_image")
 
-        now = datetime.now()
+        # Explicitly use Indian Standard Time (IST: UTC +5:30)
+        IST = timezone(timedelta(hours=5, minutes=30))
+        now = datetime.now(IST)
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
         
-        img_formula = f'=IMAGE("{image_data}")' if image_data and len(image_data) < 50000 else "Captured Photo"
+        # Name photo files cleanly based on timestamp and action
+        action_label = "IN" if action == "in" else "OUT"
+        file_suffix = now.strftime("%Y%m%d_%H%M%S")
+        photo_filename = f"attendance_captures/{user_id}_{action_label}_{file_suffix}.jpg"
+        
+        img_formula = f'=IMAGE("{image_data}")' if image_data and len(image_data) < 50000 else photo_filename
 
         records = sheet.get_all_records()
 
         if action == "in":
             active_row = None
             for idx, row in enumerate(records, start=2):
-                if str(row.get("User ID")) == str(user_id) and not row.get("Check Out"):
+                if str(row.get("User ID")) == str(user_id) and (not row.get("Check Out") or row.get("Check Out") == ""):
                     active_row = idx
                     break
             
@@ -65,7 +72,7 @@ def process_attendance(action):
             active_row = None
             check_in_time_str = None
             for idx, row in enumerate(records, start=2):
-                if str(row.get("User ID")) == str(user_id) and not row.get("Check Out"):
+                if str(row.get("User ID")) == str(user_id) and (not row.get("Check Out") or row.get("Check Out") == ""):
                     active_row = idx
                     check_in_time_str = row.get("Check In")
                     break
@@ -74,7 +81,8 @@ def process_attendance(action):
                 return jsonify({"status": "error", "message": "No active Check-In found. Please Check In first."}), 400
 
             try:
-                check_in_time = datetime.strptime(check_in_time_str, "%Y-%m-%d %H:%M:%S")
+                # Parse check-in time assuming it was saved in IST format
+                check_in_time = datetime.strptime(check_in_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
                 hours_present = round((now - check_in_time).total_seconds() / 3600, 2)
                 hours_str = f"{hours_present} hrs"
             except Exception:
@@ -94,11 +102,10 @@ def process_attendance(action):
         print(f"Error handling attendance: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# Support all common endpoint variations used by frontends
 @app.route("/attendance", methods=["POST"])
 def attendance_route():
     data = request.json or {}
-    action = data.get("action", "in")
+    action = data.get("action", "in").lower()
     return process_attendance(action)
 
 @app.route("/checkin", methods=["POST"])

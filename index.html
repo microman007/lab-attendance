@@ -55,8 +55,8 @@
         <h2>Lab Attendance</h2>
         <div class="subtitle">GPS + Hardware Biometric + Facial Verification</div>
         
-        <button class="btn-in" onclick="handleAttendance('IN')">Check In (Secure)</button>
-        <button class="btn-out" onclick="handleAttendance('OUT')">Check Out (Secure)</button>
+        <button class="btn-in" onclick="handleAttendance('in')">Check In (Secure)</button>
+        <button class="btn-out" onclick="handleAttendance('out')">Check Out (Secure)</button>
         
         <div id="status">Ready...</div>
     </div>
@@ -135,10 +135,13 @@
 
                 statusDiv.innerText = "☁️ All verifications passed! Syncing to cloud...";
 
-                const response = await fetch('/checkin', {
+                // Dynamically send to the correct endpoint based on action button clicked
+                const endpoint = action === 'in' ? '/checkin' : '/checkout';
+
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ lat, lon, action, face_image: faceImage })
+                    body: JSON.stringify({ latitude: lat, longitude: lon, action: action, face_image: faceImage })
                 });
 
                 const result = await response.json();
