@@ -51,11 +51,11 @@ def upload_base64_to_drive(base64_data, filename):
         
         media = MediaIoBaseUpload(io.BytesIO(image_bytes), mimetype='image/jpeg', resumable=True)
         
+        # Removed supports_all_drives to fix the unexpected keyword argument crash
         file = drive_service.files().create(
             body=file_metadata,
             media_body=media,
-            fields='id, webContentLink, webViewLink',
-            supports_all_drives=True
+            fields='id, webContentLink, webViewLink'
         ).execute()
         
         return filename
