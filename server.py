@@ -1,6 +1,7 @@
 import os
 import json
 import base64
+import requests
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify, render_template_string
 import gspread
@@ -17,6 +18,7 @@ SCOPES = [
 ]
 
 DRIVE_FOLDER_ID = "1v78xmQXfQ8C-gkljXRHYLvktukjfdMrq"
+IMGBB_API_KEY = "ecde3d2fcace699980aac77104e7d6de"
 
 try:
     credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
@@ -29,39 +31,35 @@ try:
     client = gspread.authorize(creds)
     sheet = client.open("Lab Attendance").sheet1
     
-    # Initialize Google Drive API client
+    # Initialize Google Drive API client (kept for any auxiliary needs)
     drive_service = build('drive', 'v3', credentials=creds)
     print("Connected to Google Sheets & Drive successfully!")
 except Exception as e:
     print(f"Google Connection Error: {e}")
-
-FOLDER_ID = "1v78xmQXfQ8C-gkljXRHYLvktukjfdMrq"
 
 def upload_base64_to_drive(base64_data, filename):
     try:
         if "," in base64_data:
             base64_data = base64_data.split(",")[1]
             
-        image_bytes = base64.b64decode(base64_data)
-        
-        file_metadata = {
-            'name': filename,
-            'parents': [FOLDER_ID]
+        payload = {
+            "key": IMGBB_API_KEY,
+            "image": base64_data,
+            "name": filename
         }
         
-        media = MediaIoBaseUpload(io.BytesIO(image_bytes), mimetype='image/jpeg', resumable=True)
+        response = requests.post("https://api.imgbb.com/1/upload", data=payload)
+        result = response.json()
         
-        # Removed supports_all_drives to fix the unexpected keyword argument crash
-        file = drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id, webContentLink, webViewLink'
-        ).execute()
-        
-        return filename
+        if result.get("success"):
+            # Returns the direct public image URL for the Google Sheet =IMAGE() formula
+            return result["data"]["url"]
+        else:
+            print(f"ImgBB Error: {result}")
+            return ""
     except Exception as e:
-        print(f"Drive Upload Error: {e}")
-        return filename
+        print(f"Image Upload Error: {e}")
+        return ""
 
 @app.route("/")
 def index():
@@ -87,7 +85,7 @@ def process_attendance(action):
         file_suffix = now.strftime("%Y%m%d_%H%M%S")
         photo_filename = f"{user_id}_{action_label}_{file_suffix}.jpg"
         
-        # Upload image to Drive and generate a proper image formula
+        # Upload image to ImgBB and generate a proper image formula
         img_formula = ""
         if image_data:
             public_url = upload_base64_to_drive(image_data, photo_filename)
