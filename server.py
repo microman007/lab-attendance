@@ -35,17 +35,18 @@ def handle_attendance():
         if not data:
             return jsonify({"status": "error", "message": "No JSON payload received."}), 400
 
-        action = data.get("action")
+        action = data.get("action")  # 'in' or 'out'
         user_id = data.get("user_id", "Arvind")
         lat = data.get("latitude")
         lon = data.get("longitude")
-        image_data = data.get("image")
+        image_data = data.get("image")  # Base64 string from frontend
 
         now = datetime.now()
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
         
-        # Save or truncate image string reference safely
-        img_ref = "Captured (Base64 Data)" if image_data else ""
+        # Safely truncate or format image data to prevent Google Sheets formula overflow errors
+        # If it's a base64 string, we can use it inside an IMAGE formula or save a clear status tag
+        img_formula = f'=IMAGE("{image_data}")' if image_data and len(image_data) < 50000 else "Captured Photo"
 
         records = sheet.get_all_records()
 
@@ -59,8 +60,9 @@ def handle_attendance():
             if active_row:
                 return jsonify({"status": "error", "message": "Already Checked In! Please Check Out first."}), 400
 
-            # Columns: User ID(A), Check In(B), Check Out(C), Hours(D), Lat(E), Lon(F), Status(G), Check-In Photo(H), Check-Out Photo(I)
-            row_data = [user_id, timestamp, "", "", lat, lon, "Checked In", img_ref, ""]
+            # Columns expected in Sheet:
+            # A: User ID, B: Check In, C: Check Out, D: Hours Present, E: Latitude, F: Longitude, G: Status, H: Check-In Photo, I: Check-Out Photo
+            row_data = [user_id, timestamp, "", "", lat, lon, "Checked In", img_formula, ""]
             sheet.append_row(row_data, value_input_option='USER_ENTERED')
             return jsonify({"status": "success", "message": "Successfully Checked IN!"})
 
@@ -83,11 +85,12 @@ def handle_attendance():
             except Exception:
                 hours_str = "0 hrs"
 
+            # Update Check Out (Col C), Hours (Col D), Status (Col G), and Check-Out Photo (Col I)
             sheet.update_cell(active_row, 3, timestamp)
             sheet.update_cell(active_row, 4, hours_str)
             sheet.update_cell(active_row, 7, "Completed")
-            if img_ref:
-                sheet.update_cell(active_row, 9, img_ref)
+            if image_data:
+                sheet.update_cell(active_row, 9, img_formula)
 
             return jsonify({"status": "success", "message": "Successfully Checked OUT!"})
 
