@@ -1,236 +1,322 @@
-import os
-import json
-import base64
-import requests
-from datetime import datetime, timezone, timedelta
-from flask import Flask, request, jsonify, render_template_string
-import gspread
-from google.oauth2.service_account import Credentials
-
-app = Flask(__name__)
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
-IMGBB_API_KEY = "ecde3d2fcace699980aac77104e7d6de"
-
-EXPECTED_HEADERS = [
-    "User ID", "Date", "Live Status", "Latitude", "Longitude", "Notes",
-    "Check-In 1", "Check-In 1 Photo", "Check-Out 1", "Check-Out 1 Photo",
-    "Check-In 2", "Check-In 2 Photo", "Check-Out 2", "Check-Out 2 Photo",
-    "Check-In 3", "Check-In 3 Photo", "Check-Out 3", "Check-Out 3 Photo",
-    "Check-In 4", "Check-In 4 Photo", "Check-Out 4", "Check-Out 4 Photo",
-    "Total Hours"
-]
-
-try:
-    credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    if credentials_json:
-        creds_dict = json.loads(credentials_json)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-    else:
-        creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
-    
-    client = gspread.authorize(creds)
-    sheet = client.open("Lab Attendance").sheet1
-    
-    existing_headers = sheet.row_values(1)
-    if not existing_headers or len(existing_headers) < len(EXPECTED_HEADERS):
-        sheet.insert_row(EXPECTED_HEADERS, 1)
-        print("Sheet headers initialized successfully!")
-    else:
-        print("Connected to Google Sheets successfully!")
-
-except Exception as e:
-    print(f"Google Connection Error: {e}")
-
-def upload_base64_to_imgbb(base64_data, filename):
-    try:
-        if "," in base64_data:
-            base64_data = base64_data.split(",")[1]
-            
-        payload = {
-            "key": IMGBB_API_KEY,
-            "image": base64_data,
-            "name": filename
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biometric Lab Attendance - Fungal Biology & Plant Genetic Engineering Lab</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0b0f19 0%, #111e38 100%);
+            color: #e2e8f0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
         }
+        .card {
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 15px rgba(56, 189, 248, 0.1);
+            width: 100%;
+            max-width: 440px;
+            text-align: center;
+        }
+        .lab-badge {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #38bdf8;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        h2 { 
+            color: #f8fafc; 
+            margin: 0 0 5px 0; 
+            font-size: 22px;
+        }
+        .subtitle { 
+            font-size: 12px; 
+            color: #94a3b8; 
+            margin-bottom: 20px; 
+        }
+        .user-select-container {
+            text-align: left;
+            margin-bottom: 15px;
+        }
+        .user-select-container label {
+            font-size: 12px;
+            color: #38bdf8;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .user-select-container select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            background: rgba(30, 41, 59, 0.9);
+            color: #fff;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            margin: 6px 0;
+            font-size: 15px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+        }
+        .btn-in { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; }
+        .btn-out { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; }
+        .btn-leave { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; }
         
-        print(f"Uploading image {filename} to ImgBB...")
-        response = requests.post("https://api.imgbb.com/1/upload", data=payload, timeout=15)
+        #status {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            color: #38bdf8;
+            font-weight: 500;
+            min-height: 20px;
+        }
+        .scanner-visual {
+            width: 70px;
+            height: 70px;
+            margin: 0 auto 15px auto;
+            border: 2px dashed #38bdf8;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <div class="lab-badge">Fungal Biology & Plant Genetic Engineering Lab</div>
+        <h2>Biometric Attendance HUD</h2>
+        <div class="subtitle">Secure Facial Recognition + GPS + Hardware Token</div>
         
-        print(f"ImgBB HTTP Status Code: {response.status_code}")
-        result = response.json()
+        <div class="scanner-visual">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20M12 2v20"></path></svg>
+        </div>
+
+        <div class="user-select-container">
+            <label for="labUser">Select Lab Member Profile:</label>
+            <select id="labUser">
+                <option value="Arvind Kayande">Arvind Kayande</option>
+                <option value="Rajesh">Rajesh</option>
+                <option value="Sampat">Sampat</option>
+                <option value="Kavita">Kavita</option>
+                <option value="Kanchan">Kanchan</option>
+                <option value="Punam Sharma">Punam Sharma</option>
+                <option value="Rinku Malviya">Rinku Malviya</option>
+                <option value="Shweta">Shweta</option>
+            </select>
+        </div>
+
+        <button class="btn-in" onclick="handleAttendance('in')">🟢 Check In (Lab Bounds)</button>
+        <button class="btn-out" onclick="handleAttendance('out')">🔴 Check Out</button>
+        <button class="btn-leave" onclick="handleLeave()">🟡 Apply Leave / Absent (Remote)</button>
         
-        if result.get("success"):
-            public_url = result["data"]["url"]
-            print(f"Image uploaded successfully: {public_url}")
-            return f'=HYPERLINK("{public_url}", IMAGE("{public_url}"))'
-        else:
-            print(f"ImgBB API Error Response: {result}")
-            return ""
-    except Exception as e:
-        print(f"Image Upload Exception Error: {e}")
-        return ""
+        <div id="status">System Online. Ready for verification.</div>
+    </div>
 
-def update_stale_sessions(current_date_str):
-    try:
-        records = sheet.get_all_records()
-        for idx, row in enumerate(records, start=2):
-            if row.get("Live Status") == "In Lab":
-                row_date = str(row.get("Date"))
-                if row_date and row_date != current_date_str:
-                    sheet.update_cell(idx, 3, "Checkout Remaining")
-    except Exception as e:
-        print(f"Stale session update error: {e}")
+    <!-- Hidden Video & Canvas for face capture -->
+    <div style="display:none;">
+        <video id="video" width="320" height="240" autoplay playsinline></video>
+        <canvas id="canvas" width="320" height="240"></canvas>
+    </div>
 
-@app.route("/")
-def index():
-    with open("index.html", "r", encoding="utf-8") as f:
-        return render_template_string(f.read())
+    <script>
+        const LAB_LOCATIONS = [
+            { name: "Fungal Biology & Plant Genetic Engineering Lab", lat: 26.625064, lon: 75.026451 },
+            { name: "DBT Builder Lab", lat: 26.6250765, lon: 75.0264546 }
+        ];
+        const MAX_DISTANCE_METERS = 15;
 
-def process_attendance(action):
-    try:
-        data = request.json
-        if not data:
-            return jsonify({"status": "error", "message": "No JSON payload received."}), 400
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
 
-        user_id = data.get("user_name") or data.get("user_id", "Arvind Kayande")
-        lat = str(data.get("latitude") or data.get("lat", ""))
-        lon = str(data.get("longitude") or data.get("lon", ""))
-        image_data = data.get("image") or data.get("face_image", "")
-        leave_reason = data.get("leave_reason", "")
-        lab_location = data.get("lab_location", "")
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 
-        IST = timezone(timedelta(hours=5, minutes=30))
-        now = datetime.now(IST)
-        date_str = now.strftime("%Y-%m-%d")
-        time_str = now.strftime("%Y-%m-%d %H:%M:%S")
-        file_suffix = now.strftime("%Y%m%d_%H%M%S")
-        
-        update_stale_sessions(date_str)
+            return R * c;
+        }
 
-        action_label = "IN" if action == "in" else ("OUT" if action == "out" else "LEAVE")
-        photo_filename = f"{user_id.replace(' ', '_')}_{action_label}_{file_suffix}.jpg"
-        
-        img_formula = ""
-        if image_data:
-            img_formula = upload_base64_to_imgbb(image_data, photo_filename)
-        else:
-            print("Warning: No image data received from frontend!")
-
-        records = sheet.get_all_records()
-
-        target_row = None
-        for idx, row in enumerate(records, start=2):
-            if str(row.get("User ID")) == str(user_id) and str(row.get("Date")) == date_str:
-                target_row = idx
-                break
-
-        if action == "leave":
-            status_val = "On Leave"
-            notes_val = f"Leave: {leave_reason}" + (f" | Lab: {lab_location}" if lab_location else "")
-            if target_row:
-                sheet.update_cell(target_row, 3, status_val)
-                sheet.update_cell(target_row, 4, lat)
-                sheet.update_cell(target_row, 5, lon)
-                sheet.update_cell(target_row, 6, notes_val)
-            else:
-                row_data = [user_id, date_str, status_val, lat, lon, notes_val] + [""] * 16 + ["0 hrs"]
-                sheet.append_row(row_data, value_input_option='USER_ENTERED')
-            return jsonify({"status": "success", "message": "Leave status recorded successfully!"})
-
-        if action == "in":
-            notes_val = f"Lab: {lab_location}" if lab_location else ""
-            if target_row:
-                row = records[target_row - 2]
-                if lat:
-                    sheet.update_cell(target_row, 4, lat)
-                if lon:
-                    sheet.update_cell(target_row, 5, lon)
-                if notes_val:
-                    sheet.update_cell(target_row, 6, notes_val)
-
-                if row.get("Check-In 1") and not row.get("Check-Out 1"):
-                    return jsonify({"status": "error", "message": "Please Check Out of Session 1 first."}), 400
-                elif row.get("Check-Out 1") and not row.get("Check-In 2"):
-                    sheet.update_cell(target_row, 11, time_str)
-                    sheet.update_cell(target_row, 12, img_formula)
-                    sheet.update_cell(target_row, 3, "In Lab")
-                elif row.get("Check-Out 2") and not row.get("Check-In 3"):
-                    sheet.update_cell(target_row, 15, time_str)
-                    sheet.update_cell(target_row, 16, img_formula)
-                    sheet.update_cell(target_row, 3, "In Lab")
-                elif row.get("Check-Out 3") and not row.get("Check-In 4"):
-                    sheet.update_cell(target_row, 19, time_str)
-                    sheet.update_cell(target_row, 20, img_formula)
-                    sheet.update_cell(target_row, 3, "In Lab")
-                else:
-                    return jsonify({"status": "error", "message": "Maximum 4 check-ins reached for today."}), 400
-            else:
-                row_data = [user_id, date_str, "In Lab", lat, lon, notes_val, time_str, img_formula] + [""] * 14 + ["0 hrs"]
-                sheet.append_row(row_data, value_input_option='USER_ENTERED')
-
-            return jsonify({"status": "success", "message": f"Successfully Checked IN at {lab_location or 'Lab'}! [Live Status: In Lab]"})
-
-        elif action == "out":
-            if not target_row:
-                return jsonify({"status": "error", "message": "No active session found for today."}), 400
-            
-            row = records[target_row - 2]
-            
-            co_col_idx, photo_col_idx = None, None
-            if row.get("Check-In 1") and not row.get("Check-Out 1"):
-                co_col_idx, photo_col_idx = 9, 10
-            elif row.get("Check-In 2") and not row.get("Check-Out 2"):
-                co_col_idx, photo_col_idx = 13, 14
-            elif row.get("Check-In 3") and not row.get("Check-Out 3"):
-                co_col_idx, photo_col_idx = 17, 18
-            elif row.get("Check-In 4") and not row.get("Check-Out 4"):
-                co_col_idx, photo_col_idx = 21, 22
-            else:
-                return jsonify({"status": "error", "message": "No active check-in session found to check out from."}), 400
-
-            sheet.update_cell(target_row, co_col_idx, time_str)
-            if img_formula:
-                sheet.update_cell(target_row, photo_col_idx, img_formula)
-            sheet.update_cell(target_row, 3, "Checked Out")
-
-            try:
-                updated_row = sheet.row_values(target_row)
-                total_seconds = 0
-                pairs = [(6, 8), (10, 12), (14, 16), (18, 20)]
-                for ci_idx, co_idx in pairs:
-                    if len(updated_row) > co_idx and updated_row[ci_idx] and updated_row[co_idx]:
-                        t_in = datetime.strptime(updated_row[ci_idx], "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
-                        t_out = datetime.strptime(updated_row[co_idx], "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
-                        total_seconds += (t_out - t_in).total_seconds()
+        async function captureFace() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
                 
-                total_hrs = round(total_seconds / 3600, 2)
-                sheet.update_cell(target_row, 23, f"{total_hrs} hrs")
-            except Exception as ex:
-                print(f"Hours calculation error: {ex}")
+                await new Promise(resolve => setTimeout(resolve, 800));
 
-            return jsonify({"status": "success", "message": "Successfully Checked OUT! [Live Status: Checked Out]"})
+                const canvas = document.getElementById('canvas');
+                const context = canvas.getContext('2d');
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const imageDataURL = canvas.toDataURL('image/jpeg', 0.8);
+                stream.getTracks().forEach(track => track.stop());
+                return imageDataURL;
+            } catch (err) {
+                throw new Error("Camera access is mandatory for facial verification.");
+            }
+        }
 
-        return jsonify({"status": "error", "message": "Invalid action."}), 400
+        async function handleAttendance(action) {
+            const statusDiv = document.getElementById('status');
+            const selectedUser = document.getElementById('labUser').value;
+            statusDiv.innerText = `📸 Activating camera for ${selectedUser}...`;
 
-    except Exception as e:
-        print(f"Error handling attendance: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+            try {
+                const faceImage = await captureFace();
 
-@app.route("/checkin", methods=["POST"])
-def checkin_route():
-    return process_attendance("in")
+                statusDiv.innerText = "📍 Verifying GPS coordinates against lab perimeters...";
 
-@app.route("/checkout", methods=["POST"])
-def checkout_route():
-    return process_attendance("out")
+                if (!navigator.geolocation) {
+                    alert("Geolocation is not supported by your device browser.");
+                    return;
+                }
 
-@app.route("/leave", methods=["POST"])
-def leave_route():
-    return process_attendance("leave")
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { 
+                        enableHighAccuracy: true, timeout: 10000, maximumAge: 0 
+                    });
+                });
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+
+                let matchedLab = null;
+                let minDistance = Infinity;
+
+                for (let lab of LAB_LOCATIONS) {
+                    const dist = calculateDistance(lat, lon, lab.lat, lab.lon);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                    }
+                    if (dist <= MAX_DISTANCE_METERS) {
+                        matchedLab = lab.name;
+                        break;
+                    }
+                }
+
+                if (!matchedLab) {
+                    statusDiv.innerText = `❌ GPS Error: Out of lab bounds! (Closest is ~${Math.round(minDistance)}m away)`;
+                    alert(`Access Denied: You are outside both lab perimeters (Closest is ~${Math.round(minDistance)} meters away). Please move inside a valid lab location.`);
+                    return;
+                }
+
+                statusDiv.innerText = `🔒 Authenticating biometric token at ${matchedLab}...`;
+
+                const publicKey = {
+                    challenge: Uint8Array.from("lab_attendance_secure_salt", c => c.charCodeAt(0)),
+                    rp: { name: "Lab Attendance System" },
+                    user: {
+                        id: Uint8Array.from(selectedUser + "_Key", c => c.charCodeAt(0)),
+                        name: selectedUser,
+                        displayName: selectedUser.split(' ')[0]
+                    },
+                    pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
+                    timeout: 60000,
+                    authenticatorSelection: { 
+                        authenticatorAttachment: "platform",
+                        userVerification: "required",
+                        residentKey: "preferred"
+                    },
+                    attestation: "none"
+                };
+
+                await navigator.credentials.create({ publicKey });
+
+                statusDiv.innerText = "☁️ Verification passed! Syncing with cloud sheet...";
+
+                const endpoint = action === 'in' ? '/checkin' : '/checkout';
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        latitude: lat, 
+                        longitude: lon, 
+                        action: action, 
+                        face_image: faceImage,
+                        user_name: selectedUser,
+                        lab_location: matchedLab
+                    })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    statusDiv.innerText = "✅ " + result.message;
+                } else {
+                    statusDiv.innerText = "❌ " + result.message;
+                }
+
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerText = "❌ Operation cancelled or failed: " + (error.message || "");
+            }
+        }
+
+        async function handleLeave() {
+            const statusDiv = document.getElementById('status');
+            const selectedUser = document.getElementById('labUser').value;
+            const reason = prompt(`Enter Leave Reason for ${selectedUser} (e.g., Medical Leave, Out of Station):`, "Casual Leave");
+            if (!reason) return;
+
+            statusDiv.innerText = "☁️ Submitting leave status to cloud...";
+
+            try {
+                const response = await fetch('/leave', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'leave', leave_reason: reason, user_name: selectedUser })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    statusDiv.innerText = "✅ " + result.message;
+                } else {
+                    statusDiv.innerText = "❌ " + result.message;
+                }
+            } catch (error) {
+                statusDiv.innerText = "❌ Leave submission failed: " + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
