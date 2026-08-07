@@ -43,6 +43,7 @@ try:
 
 except Exception as e:
     print(f"Google Connection Error: {e}")
+
 def upload_to_imgbb(base64_data, filename):
     try:
         if "," in base64_data:
@@ -60,11 +61,8 @@ def upload_to_imgbb(base64_data, filename):
         result = response.json()
         
         if response.status_code == 200 and result.get("success"):
-            # Use direct image link which Google Sheets' IMAGE() function prefers
             direct_url = result["data"]["url"]
             print(f"Image uploaded successfully to ImgBB: {direct_url}")
-            
-            # This forces Google Sheets to render the actual image inside the cell
             return f'=IMAGE("{direct_url}")'
         else:
             print(f"ImgBB API Error Response: {result}")
@@ -72,6 +70,7 @@ def upload_to_imgbb(base64_data, filename):
     except Exception as e:
         print(f"ImgBB Upload Exception Error: {e}")
         return ""
+
 def update_stale_sessions(current_date_str):
     try:
         records = sheet.get_all_records()
@@ -154,15 +153,15 @@ def process_attendance(action):
                     return jsonify({"status": "error", "message": "Please Check Out of Session 1 first."}), 400
                 elif row.get("Check-Out 1") and not row.get("Check-In 2"):
                     sheet.update_cell(target_row, 11, time_str)
-                    sheet.update_cell(target_row, 12, img_formula)
+                    sheet.update(gspread.utils.rowcol_to_a1(target_row, 12), [[img_formula]], value_input_option='USER_ENTERED')
                     sheet.update_cell(target_row, 3, "In Lab")
                 elif row.get("Check-Out 2") and not row.get("Check-In 3"):
                     sheet.update_cell(target_row, 15, time_str)
-                    sheet.update_cell(target_row, 16, img_formula)
+                    sheet.update(gspread.utils.rowcol_to_a1(target_row, 16), [[img_formula]], value_input_option='USER_ENTERED')
                     sheet.update_cell(target_row, 3, "In Lab")
                 elif row.get("Check-Out 3") and not row.get("Check-In 4"):
                     sheet.update_cell(target_row, 19, time_str)
-                    sheet.update_cell(target_row, 20, img_formula)
+                    sheet.update(gspread.utils.rowcol_to_a1(target_row, 20), [[img_formula]], value_input_option='USER_ENTERED')
                     sheet.update_cell(target_row, 3, "In Lab")
                 else:
                     return jsonify({"status": "error", "message": "Maximum 4 check-ins reached for today."}), 400
@@ -192,7 +191,7 @@ def process_attendance(action):
 
             sheet.update_cell(target_row, co_col_idx, time_str)
             if img_formula:
-                sheet.update_cell(target_row, photo_col_idx, img_formula)
+                sheet.update(gspread.utils.rowcol_to_a1(target_row, photo_col_idx), [[img_formula]], value_input_option='USER_ENTERED')
             sheet.update_cell(target_row, 3, "Checked Out")
 
             try:
