@@ -36,7 +36,6 @@ try:
     client = gspread.authorize(creds)
     sheet = client.open("Lab Attendance").sheet1
     
-    # Automatically verify and set sheet headers if missing or empty
     existing_headers = sheet.row_values(1)
     if not existing_headers or len(existing_headers) < len(EXPECTED_HEADERS):
         sheet.insert_row(EXPECTED_HEADERS, 1)
@@ -58,21 +57,24 @@ def upload_base64_to_imgbb(base64_data, filename):
             "name": filename
         }
         
-        response = requests.post("https://api.imgbb.com/1/upload", data=payload)
+        print(f"Uploading image {filename} to ImgBB...")
+        response = requests.post("https://api.imgbb.com/1/upload", data=payload, timeout=15)
+        
+        print(f"ImgBB HTTP Status Code: {response.status_code}")
         result = response.json()
         
         if result.get("success"):
             public_url = result["data"]["url"]
+            print(f"Image uploaded successfully: {public_url}")
             return f'=HYPERLINK("{public_url}", IMAGE("{public_url}"))'
         else:
-            print(f"ImgBB Error: {result}")
+            print(f"ImgBB API Error Response: {result}")
             return ""
     except Exception as e:
-        print(f"Image Upload Error: {e}")
+        print(f"Image Upload Exception Error: {e}")
         return ""
 
 def update_stale_sessions(current_date_str):
-    """Automatically marks unclosed previous-day 'In Lab' entries as 'Checkout Remaining'."""
     try:
         records = sheet.get_all_records()
         for idx, row in enumerate(records, start=2):
@@ -107,7 +109,6 @@ def process_attendance(action):
         time_str = now.strftime("%Y-%m-%d %H:%M:%S")
         file_suffix = now.strftime("%Y%m%d_%H%M%S")
         
-        # Run stale session check for any unclosed days before logging new actions
         update_stale_sessions(date_str)
 
         action_label = "IN" if action == "in" else ("OUT" if action == "out" else "LEAVE")
@@ -116,25 +117,25 @@ def process_attendance(action):
         img_formula = ""
         if image_data:
             img_formula = upload_base64_to_imgbb(image_data, photo_filename)
+        else:
+            print("Warning: No image data received from frontend!")
 
         records = sheet.get_all_records()
 
-        # Find if a single row already exists for today for this specific user
         target_row = None
         for idx, row in enumerate(records, start=2):
             if str(row.get("User ID")) == str(user_id) and str(row.get("Date")) == date_str:
                 target_row = idx
                 break
 
-        # Handle Leave Option
         if action == "leave":
             status_val = "On Leave"
             notes_val = f"Leave: {leave_reason}" + (f" | Lab: {lab_location}" if lab_location else "")
             if target_row:
-                sheet.update_cell(target_row, 3, status_val) # Live Status (Col C)
-                sheet.update_cell(target_row, 4, lat)        # Lat (Col D)
-                sheet.update_cell(target_row, 5, lon)        # Lon (Col E)
-                sheet.update_cell(target_row, 6, notes_val)  # Notes (Col F)
+                sheet.update_cell(target_row, 3, status_val)
+                sheet.update_cell(target_row, 4, lat)
+                sheet.update_cell(target_row, 5, lon)
+                sheet.update_cell(target_row, 6, notes_val)
             else:
                 row_data = [user_id, date_str, status_val, lat, lon, notes_val] + [""] * 16 + ["0 hrs"]
                 sheet.append_row(row_data, value_input_option='USER_ENTERED')
@@ -154,16 +155,16 @@ def process_attendance(action):
                 if row.get("Check-In 1") and not row.get("Check-Out 1"):
                     return jsonify({"status": "error", "message": "Please Check Out of Session 1 first."}), 400
                 elif row.get("Check-Out 1") and not row.get("Check-In 2"):
-                    sheet.update_cell(target_row, 11, time_str)  # Check-In 2 (Col K)
-                    sheet.update_cell(target_row, 12, img_formula) # Check-In 2 Photo (Col L)
+                    sheet.update_cell(target_row, 11, time_str)
+                    sheet.update_cell(target_row, 12, img_formula)
                     sheet.update_cell(target_row, 3, "In Lab")
                 elif row.get("Check-Out 2") and not row.get("Check-In 3"):
-                    sheet.update_cell(target_row, 15, time_str)  # Check-In 3 (Col O)
-                    sheet.update_cell(target_row, 16, img_formula) # Check-In 3 Photo (Col P)
+                    sheet.update_cell(target_row, 15, time_str)
+                    sheet.update_cell(target_row, 16, img_formula)
                     sheet.update_cell(target_row, 3, "In Lab")
                 elif row.get("Check-Out 3") and not row.get("Check-In 4"):
-                    sheet.update_cell(target_row, 19, time_str)  # Check-In 4 (Col S)
-                    sheet.update_cell(target_row, 20, img_formula) # Check-In 4 Photo (Col T)
+                    sheet.update_cell(target_row, 19, time_str)
+                    sheet.update_cell(target_row, 20, img_formula)
                     sheet.update_cell(target_row, 3, "In Lab")
                 else:
                     return jsonify({"status": "error", "message": "Maximum 4 check-ins reached for today."}), 400
@@ -181,13 +182,13 @@ def process_attendance(action):
             
             co_col_idx, photo_col_idx = None, None
             if row.get("Check-In 1") and not row.get("Check-Out 1"):
-                co_col_idx, photo_col_idx = 9, 10   # Col I & J
+                co_col_idx, photo_col_idx = 9, 10
             elif row.get("Check-In 2") and not row.get("Check-Out 2"):
-                co_col_idx, photo_col_idx = 13, 14 # Col M & N
+                co_col_idx, photo_col_idx = 13, 14
             elif row.get("Check-In 3") and not row.get("Check-Out 3"):
-                co_col_idx, photo_col_idx = 17, 18 # Col Q & R
+                co_col_idx, photo_col_idx = 17, 18
             elif row.get("Check-In 4") and not row.get("Check-Out 4"):
-                co_col_idx, photo_col_idx = 21, 22 # Col U & V
+                co_col_idx, photo_col_idx = 21, 22
             else:
                 return jsonify({"status": "error", "message": "No active check-in session found to check out from."}), 400
 
@@ -207,7 +208,7 @@ def process_attendance(action):
                         total_seconds += (t_out - t_in).total_seconds()
                 
                 total_hrs = round(total_seconds / 3600, 2)
-                sheet.update_cell(target_row, 23, f"{total_hrs} hrs") # Col W for total hours
+                sheet.update_cell(target_row, 23, f"{total_hrs} hrs")
             except Exception as ex:
                 print(f"Hours calculation error: {ex}")
 
