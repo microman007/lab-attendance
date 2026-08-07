@@ -1,7 +1,6 @@
 import os
 import json
 import base64
-import requests
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify, render_template_string
 import gspread
@@ -13,8 +12,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
-
-IMGBB_API_KEY = "ecde3d2fcace699980aac77104e7d6de"
 
 EXPECTED_HEADERS = [
     "User ID", "Date", "Live Status", "Latitude", "Longitude", "Notes",
@@ -46,32 +43,17 @@ try:
 except Exception as e:
     print(f"Google Connection Error: {e}")
 
-def upload_base64_to_imgbb(base64_data, filename):
+def create_image_formula(base64_data):
     try:
+        if not base64_data:
+            return ""
         if "," in base64_data:
             base64_data = base64_data.split(",")[1]
-            
-        payload = {
-            "key": IMGBB_API_KEY,
-            "image": base64_data,
-            "name": filename
-        }
-        
-        print(f"Uploading image {filename} to ImgBB...")
-        response = requests.post("https://api.imgbb.com/1/upload", data=payload, timeout=15)
-        
-        print(f"ImgBB HTTP Status Code: {response.status_code}")
-        result = response.json()
-        
-        if result.get("success"):
-            public_url = result["data"]["url"]
-            print(f"Image uploaded successfully: {public_url}")
-            return f'=HYPERLINK("{public_url}", IMAGE("{public_url}"))'
-        else:
-            print(f"ImgBB API Error Response: {result}")
-            return ""
+        # Google Sheets supports data URIs directly inside the IMAGE formula
+        data_uri = f"data:image/jpeg;base64,{base64_data}"
+        return f'=IMAGE("{data_uri}")'
     except Exception as e:
-        print(f"Image Upload Exception Error: {e}")
+        print(f"Image formula creation error: {e}")
         return ""
 
 def update_stale_sessions(current_date_str):
@@ -107,19 +89,10 @@ def process_attendance(action):
         now = datetime.now(IST)
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%Y-%m-%d %H:%M:%S")
-        file_suffix = now.strftime("%Y%m%d_%H%M%S")
         
         update_stale_sessions(date_str)
 
-        action_label = "IN" if action == "in" else ("OUT" if action == "out" else "LEAVE")
-        photo_filename = f"{user_id.replace(' ', '_')}_{action_label}_{file_suffix}.jpg"
-        
-        img_formula = ""
-        if image_data:
-            img_formula = upload_base64_to_imgbb(image_data, photo_filename)
-        else:
-            print("Warning: No image data received from frontend!")
-
+        img_formula = create_image_formula(image_data)
         records = sheet.get_all_records()
 
         target_row = None
