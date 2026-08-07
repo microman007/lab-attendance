@@ -44,37 +44,31 @@ try:
 except Exception as e:
     print(f"Google Connection Error: {e}")
 
-def upload_to_freeimage(base64_data, filename):
+def upload_to_imgbb(base64_data, filename):
     try:
         if "," in base64_data:
             base64_data = base64_data.split(",")[1]
         
-        image_bytes = base64.b64decode(base64_data)
-        
-        # Using freeimage.host free anonymous upload API
-        url = "https://freeimage.host/api/1/upload"
+        url = "https://api.imgbb.com/1/upload"
         payload = {
-            "key": "6d207e02198a847aa98d0a2a901485a5", # Free public community key
-            "action": "upload",
-            "format": "json"
-        }
-        files = {
-            "source": (filename, image_bytes, "image/jpeg")
+            "key": "ecde3d2fcace699980aac77104e7d6de",  # Your personal ImgBB API key
+            "image": base64_data,
+            "name": filename
         }
         
-        print(f"Uploading image {filename} to FreeImage...")
-        response = requests.post(url, data=payload, files=files, timeout=20)
+        print(f"Uploading image {filename} to your ImgBB account...")
+        response = requests.post(url, data=payload, timeout=20)
         result = response.json()
         
-        if response.status_code == 200 and result.get("status_code") == 200:
-            public_url = result["image"]["url"]
-            print(f"Image uploaded successfully: {public_url}")
+        if response.status_code == 200 and result.get("success"):
+            public_url = result["data"]["display_url"]
+            print(f"Image uploaded successfully to ImgBB: {public_url}")
             return f'=HYPERLINK("{public_url}", IMAGE("{public_url}"))'
         else:
-            print(f"FreeImage API Error Response: {result}")
+            print(f"ImgBB API Error Response: {result}")
             return ""
     except Exception as e:
-        print(f"Image Upload Exception Error: {e}")
+        print(f"ImgBB Upload Exception Error: {e}")
         return ""
 
 def update_stale_sessions(current_date_str):
@@ -115,11 +109,11 @@ def process_attendance(action):
         update_stale_sessions(date_str)
 
         action_label = "IN" if action == "in" else ("OUT" if action == "out" else "LEAVE")
-        photo_filename = f"{user_id.replace(' ', '_')}_{action_label}_{file_suffix}.jpg"
+        photo_filename = f"{user_id.replace(' ', '_')}_{action_label}_{file_suffix}"
         
         img_formula = ""
         if image_data:
-            img_formula = upload_to_freeimage(image_data, photo_filename)
+            img_formula = upload_to_imgbb(image_data, photo_filename)
         else:
             print("Warning: No image data received from frontend!")
 
