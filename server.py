@@ -43,7 +43,6 @@ try:
 
 except Exception as e:
     print(f"Google Connection Error: {e}")
-
 def upload_to_imgbb(base64_data, filename):
     try:
         if "," in base64_data:
@@ -61,16 +60,18 @@ def upload_to_imgbb(base64_data, filename):
         result = response.json()
         
         if response.status_code == 200 and result.get("success"):
-            public_url = result["data"]["display_url"]
-            print(f"Image uploaded successfully to ImgBB: {public_url}")
-            return f'=HYPERLINK("{public_url}", IMAGE("{public_url}"))'
+            # Use direct image link which Google Sheets' IMAGE() function prefers
+            direct_url = result["data"]["url"]
+            print(f"Image uploaded successfully to ImgBB: {direct_url}")
+            
+            # This forces Google Sheets to render the actual image inside the cell
+            return f'=IMAGE("{direct_url}")'
         else:
             print(f"ImgBB API Error Response: {result}")
             return ""
     except Exception as e:
         print(f"ImgBB Upload Exception Error: {e}")
         return ""
-
 def update_stale_sessions(current_date_str):
     try:
         records = sheet.get_all_records()
