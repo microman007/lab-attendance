@@ -71,6 +71,18 @@ def upload_base64_to_imgbb(base64_data, filename):
         print(f"Image Upload Error: {e}")
         return ""
 
+def update_stale_sessions(current_date_str):
+    """Automatically marks unclosed previous-day 'In Lab' entries as 'Checkout Remaining'."""
+    try:
+        records = sheet.get_all_records()
+        for idx, row in enumerate(records, start=2):
+            if row.get("Live Status") == "In Lab":
+                row_date = str(row.get("Date"))
+                if row_date and row_date != current_date_str:
+                    sheet.update_cell(idx, 3, "Checkout Remaining")
+    except Exception as e:
+        print(f"Stale session update error: {e}")
+
 @app.route("/")
 def index():
     with open("index.html", "r", encoding="utf-8") as f:
@@ -82,11 +94,12 @@ def process_attendance(action):
         if not data:
             return jsonify({"status": "error", "message": "No JSON payload received."}), 400
 
-        user_id = data.get("user_id", "Arvind")
+        user_id = data.get("user_name") or data.get("user_id", "Arvind Kayande")
         lat = str(data.get("latitude") or data.get("lat", ""))
         lon = str(data.get("longitude") or data.get("lon", ""))
         image_data = data.get("image") or data.get("face_image", "")
         leave_reason = data.get("leave_reason", "")
+        lab_location = data.get("lab_location", "")
 
         IST = timezone(timedelta(hours=5, minutes=30))
         now = datetime.now(IST)
@@ -94,8 +107,11 @@ def process_attendance(action):
         time_str = now.strftime("%Y-%m-%d %H:%M:%S")
         file_suffix = now.strftime("%Y%m%d_%H%M%S")
         
+        # Run stale session check for any unclosed days before logging new actions
+        update_stale_sessions(date_str)
+
         action_label = "IN" if action == "in" else ("OUT" if action == "out" else "LEAVE")
-        photo_filename = f"{user_id}_{action_label}_{file_suffix}.jpg"
+        photo_filename = f"{user_id.replace(' ', '_')}_{action_label}_{file_suffix}.jpg"
         
         img_formula = ""
         if image_data:
@@ -103,7 +119,7 @@ def process_attendance(action):
 
         records = sheet.get_all_records()
 
-        # Find if a single row already exists for today
+        # Find if a single row already exists for today for this specific user
         target_row = None
         for idx, row in enumerate(records, start=2):
             if str(row.get("User ID")) == str(user_id) and str(row.get("Date")) == date_str:
@@ -113,23 +129,27 @@ def process_attendance(action):
         # Handle Leave Option
         if action == "leave":
             status_val = "On Leave"
+            notes_val = f"Leave: {leave_reason}" + (f" | Lab: {lab_location}" if lab_location else "")
             if target_row:
                 sheet.update_cell(target_row, 3, status_val) # Live Status (Col C)
                 sheet.update_cell(target_row, 4, lat)        # Lat (Col D)
                 sheet.update_cell(target_row, 5, lon)        # Lon (Col E)
-                sheet.update_cell(target_row, 6, f"Leave: {leave_reason}") # Notes (Col F)
+                sheet.update_cell(target_row, 6, notes_val)  # Notes (Col F)
             else:
-                row_data = [user_id, date_str, status_val, lat, lon, f"Leave: {leave_reason}"] + [""] * 16 + ["0 hrs"]
+                row_data = [user_id, date_str, status_val, lat, lon, notes_val] + [""] * 16 + ["0 hrs"]
                 sheet.append_row(row_data, value_input_option='USER_ENTERED')
             return jsonify({"status": "success", "message": "Leave status recorded successfully!"})
 
         if action == "in":
+            notes_val = f"Lab: {lab_location}" if lab_location else ""
             if target_row:
                 row = records[target_row - 2]
                 if lat:
                     sheet.update_cell(target_row, 4, lat)
                 if lon:
                     sheet.update_cell(target_row, 5, lon)
+                if notes_val:
+                    sheet.update_cell(target_row, 6, notes_val)
 
                 if row.get("Check-In 1") and not row.get("Check-Out 1"):
                     return jsonify({"status": "error", "message": "Please Check Out of Session 1 first."}), 400
@@ -148,10 +168,10 @@ def process_attendance(action):
                 else:
                     return jsonify({"status": "error", "message": "Maximum 4 check-ins reached for today."}), 400
             else:
-                row_data = [user_id, date_str, "In Lab", lat, lon, "", time_str, img_formula] + [""] * 14 + ["0 hrs"]
+                row_data = [user_id, date_str, "In Lab", lat, lon, notes_val, time_str, img_formula] + [""] * 14 + ["0 hrs"]
                 sheet.append_row(row_data, value_input_option='USER_ENTERED')
 
-            return jsonify({"status": "success", "message": "Successfully Checked IN! [Live Status: In Lab]"})
+            return jsonify({"status": "success", "message": f"Successfully Checked IN at {lab_location or 'Lab'}! [Live Status: In Lab]"})
 
         elif action == "out":
             if not target_row:
