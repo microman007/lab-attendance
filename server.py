@@ -178,9 +178,7 @@ def upload_base64_to_freeimage(base64_data, filename):
 
             "source": base64_data,
 
-            "format": "json",
-
-            "album_id": "HKFzdJ"
+            "format": "json"
         }
 
 
