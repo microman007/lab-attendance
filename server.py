@@ -27,9 +27,13 @@ SCOPES = [
 
 # ============================================================
 # FREEIMAGE.HOST API KEY
+#
 # IMPORTANT:
-# Store this in Render Environment Variables.
-# Do NOT put the actual key in GitHub.
+# Store the API key in Render Environment Variables:
+#
+# FREEIMAGE_API_KEY
+#
+# Do NOT put the actual API key in GitHub.
 # ============================================================
 
 FREEIMAGE_API_KEY = os.environ.get("FREEIMAGE_API_KEY")
@@ -120,7 +124,7 @@ try:
 
 except Exception as e:
 
-    print(f"Google Connection Error: {e}")
+    print("Google Connection Error:", repr(e))
 
 
 # ============================================================
@@ -132,7 +136,7 @@ def upload_base64_to_freeimage(base64_data, filename):
     try:
 
         # ----------------------------------------------------
-        # Check whether image data exists
+        # Check image data
         # ----------------------------------------------------
 
         if not base64_data:
@@ -147,7 +151,7 @@ def upload_base64_to_freeimage(base64_data, filename):
         #
         # data:image/jpeg;base64,
         #
-        # from the Base64 string
+        # from Base64 string
         # ----------------------------------------------------
 
         if "," in base64_data:
@@ -156,7 +160,7 @@ def upload_base64_to_freeimage(base64_data, filename):
 
 
         # ----------------------------------------------------
-        # Check API key
+        # Check Freeimage API key
         # ----------------------------------------------------
 
         if not FREEIMAGE_API_KEY:
@@ -167,7 +171,13 @@ def upload_base64_to_freeimage(base64_data, filename):
 
 
         # ----------------------------------------------------
-        # Freeimage.host API payload
+        # Freeimage.host API
+        #
+        # IMPORTANT:
+        # We are intentionally using the documented API
+        # parameters only.
+        #
+        # DO NOT add album_id here.
         # ----------------------------------------------------
 
         payload = {
@@ -179,6 +189,7 @@ def upload_base64_to_freeimage(base64_data, filename):
             "source": base64_data,
 
             "format": "json"
+
         }
 
 
@@ -186,18 +197,21 @@ def upload_base64_to_freeimage(base64_data, filename):
         # Upload image
         # ----------------------------------------------------
 
+        print("Uploading photo to Freeimage.host...")
+
         response = requests.post(
 
             "https://freeimage.host/api/1/upload",
 
             data=payload,
 
-            timeout=30
+            timeout=60
+
         )
 
 
         # ----------------------------------------------------
-        # Print HTTP response code for Render logs
+        # Print HTTP response for Render logs
         # ----------------------------------------------------
 
         print(
@@ -210,11 +224,28 @@ def upload_base64_to_freeimage(base64_data, filename):
         # Convert response to JSON
         # ----------------------------------------------------
 
-        result = response.json()
+        try:
+
+            result = response.json()
+
+        except ValueError:
+
+            print(
+                "Freeimage.host returned invalid JSON."
+            )
+
+            print(
+                "Raw response:",
+                response.text[:2000]
+            )
+
+            return ""
 
 
         # ----------------------------------------------------
-        # Print API response for debugging
+        # Print API response
+        #
+        # This is very important for debugging.
         # ----------------------------------------------------
 
         print(
@@ -233,37 +264,72 @@ def upload_base64_to_freeimage(base64_data, filename):
 
             and result.get("status_code") == 200
 
+            and result.get("success")
+
             and result.get("image")
 
         ):
 
-            image_url = result["image"].get("url")
+            image_info = result.get("image", {})
 
 
             # ------------------------------------------------
             # Direct image URL
             # ------------------------------------------------
 
+            image_url = image_info.get("url")
+
+
+            # ------------------------------------------------
+            # Freeimage viewer URL
+            # ------------------------------------------------
+
+            viewer_url = image_info.get("url_viewer")
+
+
+            print(
+                "Freeimage upload SUCCESS."
+            )
+
+            print(
+                "Filename:",
+                filename
+            )
+
+            print(
+                "Direct image URL:",
+                image_url
+            )
+
+            print(
+                "Viewer URL:",
+                viewer_url
+            )
+
+
+            # ------------------------------------------------
+            # Create Google Sheets formula
+            #
+            # IMAGE() displays the actual image.
+            #
+            # HYPERLINK() makes the image clickable and opens
+            # the Freeimage viewer page.
+            # ------------------------------------------------
+
             if image_url:
 
-                print(
-                    "Image uploaded successfully:"
-                )
+                if viewer_url:
 
-                print(image_url)
+                    formula = (
+                        f'=HYPERLINK("{viewer_url}",'
+                        f'IMAGE("{image_url}"))'
+                    )
 
+                else:
 
-                # ------------------------------------------------
-                # Google Sheets formula
-                #
-                # IMAGE() displays the image.
-                # HYPERLINK() makes the image clickable.
-                # ------------------------------------------------
-
-                formula = (
-                    f'=HYPERLINK("{image_url}",'
-                    f'IMAGE("{image_url}"))'
-                )
+                    formula = (
+                        f'=IMAGE("{image_url}")'
+                    )
 
 
                 return formula
@@ -274,10 +340,13 @@ def upload_base64_to_freeimage(base64_data, filename):
         # ----------------------------------------------------
 
         print(
-            "Freeimage.host upload failed:"
+            "Freeimage.host upload FAILED."
         )
 
-        print(result)
+        print(
+            "API result:",
+            result
+        )
 
         return ""
 
@@ -285,7 +354,7 @@ def upload_base64_to_freeimage(base64_data, filename):
     except requests.exceptions.Timeout:
 
         print(
-            "Freeimage.host upload timeout."
+            "Freeimage.host upload TIMEOUT."
         )
 
         return ""
@@ -294,23 +363,8 @@ def upload_base64_to_freeimage(base64_data, filename):
     except requests.exceptions.RequestException as e:
 
         print(
-            "Freeimage.host request error:",
+            "Freeimage.host REQUEST ERROR:",
             repr(e)
-        )
-
-        return ""
-
-
-    except ValueError as e:
-
-        print(
-            "Freeimage.host returned invalid JSON:",
-            repr(e)
-        )
-
-        print(
-            "Raw response:",
-            response.text[:1000]
         )
 
         return ""
@@ -319,7 +373,7 @@ def upload_base64_to_freeimage(base64_data, filename):
     except Exception as e:
 
         print(
-            "Freeimage.host Image Upload Error:",
+            "Freeimage.host IMAGE UPLOAD ERROR:",
             repr(e)
         )
 
@@ -358,7 +412,6 @@ def process_attendance(action):
 
         data = request.json
 
-
         if not data:
 
             return jsonify({
@@ -374,15 +427,10 @@ def process_attendance(action):
         # ----------------------------------------------------
         # USER ID
         #
-        # Supports both:
+        # Supports:
         #
         # user_id
-        #
-        # and
-        #
         # user_name
-        #
-        # so your current index.html continues working.
         # ----------------------------------------------------
 
         user_id = (
@@ -392,11 +440,12 @@ def process_attendance(action):
             or data.get("user_name")
 
             or "Arvind"
+
         )
 
 
         # ----------------------------------------------------
-        # GPS
+        # GPS LATITUDE
         # ----------------------------------------------------
 
         lat = str(
@@ -406,8 +455,13 @@ def process_attendance(action):
             or data.get("lat")
 
             or ""
+
         )
 
+
+        # ----------------------------------------------------
+        # GPS LONGITUDE
+        # ----------------------------------------------------
 
         lon = str(
 
@@ -416,18 +470,16 @@ def process_attendance(action):
             or data.get("lon")
 
             or ""
+
         )
 
 
         # ----------------------------------------------------
         # IMAGE
         #
-        # Supports both:
+        # Supports:
         #
         # image
-        #
-        # and
-        #
         # face_image
         # ----------------------------------------------------
 
@@ -438,6 +490,7 @@ def process_attendance(action):
             or data.get("face_image")
 
             or ""
+
         )
 
 
@@ -485,22 +538,28 @@ def process_attendance(action):
         action_label = (
 
             "IN"
+
             if action == "in"
 
-            else
-            (
+            else (
+
                 "OUT"
+
                 if action == "out"
 
                 else "LEAVE"
+
             )
+
         )
 
 
         photo_filename = (
+
             f"{user_id}_"
             f"{action_label}_"
             f"{file_suffix}.jpg"
+
         )
 
 
@@ -513,11 +572,35 @@ def process_attendance(action):
 
         if image_data:
 
+            print(
+                "Photo received from browser."
+            )
+
             img_formula = upload_base64_to_freeimage(
 
                 image_data,
 
                 photo_filename
+
+            )
+
+            if img_formula:
+
+                print(
+                    "Photo URL/formula generated successfully."
+                )
+
+            else:
+
+                print(
+                    "WARNING: Photo upload failed. "
+                    "Attendance will continue without photo."
+                )
+
+        else:
+
+            print(
+                "No photo was included in the request."
             )
 
 
@@ -543,11 +626,13 @@ def process_attendance(action):
             if (
 
                 str(row.get("User ID"))
+
                 == str(user_id)
 
                 and
 
                 str(row.get("Date"))
+
                 == date_str
 
             ):
@@ -601,17 +686,25 @@ def process_attendance(action):
                 row_data = (
 
                     [
+
                         user_id,
+
                         date_str,
+
                         status_val,
+
                         lat,
+
                         lon,
+
                         f"Leave: {leave_reason}"
+
                     ]
 
                     + [""] * 16
 
                     + ["0 hrs"]
+
                 )
 
 
@@ -620,6 +713,7 @@ def process_attendance(action):
                     row_data,
 
                     value_input_option="USER_ENTERED"
+
                 )
 
 
@@ -638,6 +732,7 @@ def process_attendance(action):
         # ====================================================
 
         if action == "in":
+
 
             # ------------------------------------------------
             # Existing row for today
@@ -661,6 +756,7 @@ def process_attendance(action):
                         target_row,
                         4,
                         lat
+
                     )
 
 
@@ -671,6 +767,7 @@ def process_attendance(action):
                         target_row,
                         5,
                         lon
+
                     )
 
 
@@ -717,6 +814,7 @@ def process_attendance(action):
                         target_row,
                         11,
                         time_str
+
                     )
 
 
@@ -725,6 +823,7 @@ def process_attendance(action):
                         target_row,
                         12,
                         img_formula
+
                     )
 
 
@@ -733,6 +832,7 @@ def process_attendance(action):
                         target_row,
                         3,
                         "In Lab"
+
                     )
 
 
@@ -755,6 +855,7 @@ def process_attendance(action):
                         target_row,
                         15,
                         time_str
+
                     )
 
 
@@ -763,6 +864,7 @@ def process_attendance(action):
                         target_row,
                         16,
                         img_formula
+
                     )
 
 
@@ -771,6 +873,7 @@ def process_attendance(action):
                         target_row,
                         3,
                         "In Lab"
+
                     )
 
 
@@ -793,6 +896,7 @@ def process_attendance(action):
                         target_row,
                         19,
                         time_str
+
                     )
 
 
@@ -801,6 +905,7 @@ def process_attendance(action):
                         target_row,
                         20,
                         img_formula
+
                     )
 
 
@@ -809,6 +914,7 @@ def process_attendance(action):
                         target_row,
                         3,
                         "In Lab"
+
                     )
 
 
@@ -833,19 +939,29 @@ def process_attendance(action):
                 row_data = (
 
                     [
+
                         user_id,
+
                         date_str,
+
                         "In Lab",
+
                         lat,
+
                         lon,
+
                         "",
+
                         time_str,
+
                         img_formula
+
                     ]
 
                     + [""] * 14
 
                     + ["0 hrs"]
+
                 )
 
 
@@ -854,6 +970,7 @@ def process_attendance(action):
                     row_data,
 
                     value_input_option="USER_ENTERED"
+
                 )
 
 
@@ -873,6 +990,7 @@ def process_attendance(action):
         # ====================================================
 
         elif action == "out":
+
 
             # ------------------------------------------------
             # No attendance row
@@ -1002,6 +1120,7 @@ def process_attendance(action):
                 target_row,
                 co_col_idx,
                 time_str
+
             )
 
 
@@ -1016,6 +1135,7 @@ def process_attendance(action):
                     target_row,
                     photo_col_idx,
                     img_formula
+
                 )
 
 
@@ -1028,6 +1148,7 @@ def process_attendance(action):
                 target_row,
                 3,
                 "Checked Out"
+
             )
 
 
@@ -1046,7 +1167,7 @@ def process_attendance(action):
 
 
                 # ------------------------------------------------
-                # Column indexes here are ZERO-BASED
+                # ZERO-BASED INDEXES
                 #
                 # G/I = Session 1
                 # K/M = Session 2
@@ -1063,6 +1184,7 @@ def process_attendance(action):
                     (14, 16),
 
                     (18, 20)
+
                 ]
 
 
@@ -1107,6 +1229,7 @@ def process_attendance(action):
                         total_seconds += (
 
                             t_out - t_in
+
                         ).total_seconds()
 
 
@@ -1115,6 +1238,7 @@ def process_attendance(action):
                     total_seconds / 3600,
 
                     2
+
                 )
 
 
@@ -1127,6 +1251,7 @@ def process_attendance(action):
                     target_row,
                     23,
                     f"{total_hrs} hrs"
+
                 )
 
 
@@ -1134,7 +1259,7 @@ def process_attendance(action):
 
                 print(
                     "Hours calculation error:",
-                    ex
+                    repr(ex)
                 )
 
 
@@ -1230,4 +1355,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
 
         port=10000
+
     )
