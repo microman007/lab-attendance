@@ -268,8 +268,11 @@ def process_attendance(action):
             )
         )
 
+        # Sanitize user_id to remove spaces for a clean URL
+        safe_user_id = str(user_id).replace(" ", "_")
+
         photo_filename = (
-            f"{user_id}_"
+            f"{safe_user_id}_"
             f"{action_label}_"
             f"{file_suffix}.jpg"
         )
