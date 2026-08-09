@@ -26,17 +26,17 @@ SCOPES = [
 
 
 # ============================================================
-# FREEIMAGE.HOST API KEY
+# IMGBB API KEY
 #
 # IMPORTANT:
 # Store the API key in Render Environment Variables:
 #
-# FREEIMAGE_API_KEY
+# IMGBB_API_KEY
 #
 # Do NOT put the actual API key in GitHub.
 # ============================================================
 
-FREEIMAGE_API_KEY = os.environ.get("FREEIMAGE_API_KEY")
+IMGBB_API_KEY = os.environ.get("IMGBB_API_KEY")
 
 
 # ============================================================
@@ -128,10 +128,10 @@ except Exception as e:
 
 
 # ============================================================
-# FREEIMAGE.HOST IMAGE UPLOAD
+# IMGBB IMAGE UPLOAD
 # ============================================================
 
-def upload_base64_to_freeimage(base64_data, filename):
+def upload_base64_to_imgbb(base64_data, filename):
 
     try:
 
@@ -160,35 +160,27 @@ def upload_base64_to_freeimage(base64_data, filename):
 
 
         # ----------------------------------------------------
-        # Check Freeimage API key
+        # Check ImgBB API key
         # ----------------------------------------------------
 
-        if not FREEIMAGE_API_KEY:
+        if not IMGBB_API_KEY:
 
-            print("ERROR: FREEIMAGE_API_KEY is not configured.")
+            print("ERROR: IMGBB_API_KEY is not configured.")
 
             return ""
 
 
         # ----------------------------------------------------
-        # Freeimage.host API
-        #
-        # IMPORTANT:
-        # We are intentionally using the documented API
-        # parameters only.
-        #
-        # DO NOT add album_id here.
+        # ImgBB API payload
         # ----------------------------------------------------
 
         payload = {
 
-            "key": FREEIMAGE_API_KEY,
+            "key": IMGBB_API_KEY,
 
-            "action": "upload",
+            "image": base64_data,
 
-            "source": base64_data,
-
-            "format": "json"
+            "name": filename
 
         }
 
@@ -197,11 +189,11 @@ def upload_base64_to_freeimage(base64_data, filename):
         # Upload image
         # ----------------------------------------------------
 
-        print("Uploading photo to Freeimage.host...")
+        print("Uploading photo to ImgBB...")
 
         response = requests.post(
 
-            "https://freeimage.host/api/1/upload",
+            "https://api.imgbb.com/1/upload",
 
             data=payload,
 
@@ -215,7 +207,7 @@ def upload_base64_to_freeimage(base64_data, filename):
         # ----------------------------------------------------
 
         print(
-            "Freeimage.host HTTP status:",
+            "ImgBB HTTP status:",
             response.status_code
         )
 
@@ -230,9 +222,7 @@ def upload_base64_to_freeimage(base64_data, filename):
 
         except ValueError:
 
-            print(
-                "Freeimage.host returned invalid JSON."
-            )
+            print("ImgBB returned invalid JSON.")
 
             print(
                 "Raw response:",
@@ -244,12 +234,10 @@ def upload_base64_to_freeimage(base64_data, filename):
 
         # ----------------------------------------------------
         # Print API response
-        #
-        # This is very important for debugging.
         # ----------------------------------------------------
 
         print(
-            "Freeimage.host response:",
+            "ImgBB response:",
             result
         )
 
@@ -262,15 +250,13 @@ def upload_base64_to_freeimage(base64_data, filename):
 
             response.ok
 
-            and result.get("status_code") == 200
+            and result.get("success") is True
 
-            and result.get("success")
-
-            and result.get("image")
+            and result.get("data")
 
         ):
 
-            image_info = result.get("image", {})
+            image_info = result.get("data", {})
 
 
             # ------------------------------------------------
@@ -281,15 +267,13 @@ def upload_base64_to_freeimage(base64_data, filename):
 
 
             # ------------------------------------------------
-            # Freeimage viewer URL
+            # ImgBB viewer URL
             # ------------------------------------------------
 
             viewer_url = image_info.get("url_viewer")
 
 
-            print(
-                "Freeimage upload SUCCESS."
-            )
+            print("ImgBB upload SUCCESS.")
 
             print(
                 "Filename:",
@@ -311,9 +295,7 @@ def upload_base64_to_freeimage(base64_data, filename):
             # Create Google Sheets formula
             #
             # IMAGE() displays the actual image.
-            #
-            # HYPERLINK() makes the image clickable and opens
-            # the Freeimage viewer page.
+            # HYPERLINK() makes the image clickable.
             # ------------------------------------------------
 
             if image_url:
@@ -332,6 +314,11 @@ def upload_base64_to_freeimage(base64_data, filename):
                     )
 
 
+                print(
+                    "Google Sheets image formula:",
+                    formula
+                )
+
                 return formula
 
 
@@ -339,9 +326,7 @@ def upload_base64_to_freeimage(base64_data, filename):
         # Upload failed
         # ----------------------------------------------------
 
-        print(
-            "Freeimage.host upload FAILED."
-        )
+        print("ImgBB upload FAILED.")
 
         print(
             "API result:",
@@ -353,9 +338,7 @@ def upload_base64_to_freeimage(base64_data, filename):
 
     except requests.exceptions.Timeout:
 
-        print(
-            "Freeimage.host upload TIMEOUT."
-        )
+        print("ImgBB upload TIMEOUT.")
 
         return ""
 
@@ -363,7 +346,7 @@ def upload_base64_to_freeimage(base64_data, filename):
     except requests.exceptions.RequestException as e:
 
         print(
-            "Freeimage.host REQUEST ERROR:",
+            "ImgBB REQUEST ERROR:",
             repr(e)
         )
 
@@ -373,7 +356,7 @@ def upload_base64_to_freeimage(base64_data, filename):
     except Exception as e:
 
         print(
-            "Freeimage.host IMAGE UPLOAD ERROR:",
+            "ImgBB IMAGE UPLOAD ERROR:",
             repr(e)
         )
 
@@ -576,7 +559,7 @@ def process_attendance(action):
                 "Photo received from browser."
             )
 
-            img_formula = upload_base64_to_freeimage(
+            img_formula = upload_base64_to_imgbb(
 
                 image_data,
 
