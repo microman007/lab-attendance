@@ -127,8 +127,8 @@ def save_photo_locally(base64_data, filename):
         base_url = request.host_url.rstrip('/')
         public_url = f"{base_url}/photos/{filename}"
 
-        # Create Google Sheets clickable hyperlink formula
-        formula = f'=HYPERLINK("{public_url}", "📷 View Photo")'
+        # Create Google Sheets formula rendering both the image thumbnail and hyperlink
+        formula = f'=HYPERLINK("{public_url}", IMAGE("{public_url}"))'
         print(f"Local photo saved successfully: {public_url}")
         
         return formula
