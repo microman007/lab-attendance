@@ -1,9 +1,9 @@
 import os
 import json
-import requests
+import base64
 from datetime import datetime, timezone, timedelta
 
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, send_from_directory
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -23,20 +23,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
-
-
-# ============================================================
-# IMGBB API KEY
-#
-# IMPORTANT:
-# Store the API key in Render Environment Variables:
-#
-# IMGBB_API_KEY
-#
-# Do NOT put the actual API key in GitHub.
-# ============================================================
-
-IMGBB_API_KEY = os.environ.get("IMGBB_API_KEY")
 
 
 # ============================================================
@@ -80,28 +66,21 @@ EXPECTED_HEADERS = [
 # ============================================================
 
 try:
-
     credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 
     if credentials_json:
-
         creds_dict = json.loads(credentials_json)
-
         creds = Credentials.from_service_account_info(
             creds_dict,
             scopes=SCOPES
         )
-
     else:
-
         creds = Credentials.from_service_account_file(
             "credentials.json",
             scopes=SCOPES
         )
 
-
     client = gspread.authorize(creds)
-
     sheet = client.open("Lab Attendance").sheet1
 
 
@@ -112,255 +91,60 @@ try:
     existing_headers = sheet.row_values(1)
 
     if not existing_headers or len(existing_headers) < len(EXPECTED_HEADERS):
-
         sheet.insert_row(EXPECTED_HEADERS, 1)
-
         print("Sheet headers initialized successfully!")
-
     else:
-
         print("Connected to Google Sheets successfully!")
 
 
 except Exception as e:
-
     print("Google Connection Error:", repr(e))
 
 
 # ============================================================
-# IMGBB IMAGE UPLOAD
+# LOCAL PHOTO STORAGE FUNCTION
 # ============================================================
 
-def upload_base64_to_imgbb(base64_data, filename):
-
+def save_photo_locally(base64_data, filename):
     try:
-
-        # ----------------------------------------------------
-        # Check image data
-        # ----------------------------------------------------
-
         if not base64_data:
-
             print("No image data received.")
-
             return ""
-
-
-        # ----------------------------------------------------
-        # Remove:
-        #
-        # data:image/jpeg;base64,
-        #
-        # from Base64 string
-        # ----------------------------------------------------
 
         if "," in base64_data:
-
             base64_data = base64_data.split(",", 1)[1]
 
-
-        # ----------------------------------------------------
-        # Check ImgBB API key
-        # ----------------------------------------------------
-
-        if not IMGBB_API_KEY:
-
-            print("ERROR: IMGBB_API_KEY is not configured.")
-
-            return ""
-
-
-        # ----------------------------------------------------
-        # ImgBB API payload
-        # ----------------------------------------------------
-
-        payload = {
-
-            "key": IMGBB_API_KEY,
-
-            "image": base64_data,
-
-            "name": filename
-
-        }
-
-
-        # ----------------------------------------------------
-        # Upload image
-        # ----------------------------------------------------
-
-        print("Uploading photo to ImgBB...")
-
-        response = requests.post(
-
-            "https://api.imgbb.com/1/upload",
-
-            data=payload,
-
-            timeout=60
-
-        )
-
-
-        # ----------------------------------------------------
-        # Print HTTP response for Render logs
-        # ----------------------------------------------------
-
-        print(
-            "ImgBB HTTP status:",
-            response.status_code
-        )
-
-
-        # ----------------------------------------------------
-        # Convert response to JSON
-        # ----------------------------------------------------
-
-        try:
-
-            result = response.json()
-
-        except ValueError:
-
-            print("ImgBB returned invalid JSON.")
-
-            print(
-                "Raw response:",
-                response.text[:2000]
-            )
-
-            return ""
-
-
-        # ----------------------------------------------------
-        # Print API response
-        # ----------------------------------------------------
-
-        print(
-            "ImgBB response:",
-            result
-        )
-
-
-        # ----------------------------------------------------
-        # Check successful upload
-        # ----------------------------------------------------
-
-        if (
-
-            response.ok
-
-            and result.get("success") is True
-
-            and result.get("data")
-
-        ):
-
-            image_info = result.get("data", {})
-
-
-            # ------------------------------------------------
-            # Direct image URL
-            # ------------------------------------------------
-
-            image_url = image_info.get("url")
-
-
-            # ------------------------------------------------
-            # ImgBB viewer URL
-            # ------------------------------------------------
-
-            viewer_url = image_info.get("url_viewer")
-
-
-            print("ImgBB upload SUCCESS.")
-
-            print(
-                "Filename:",
-                filename
-            )
-
-            print(
-                "Direct image URL:",
-                image_url
-            )
-
-            print(
-                "Viewer URL:",
-                viewer_url
-            )
-
-
-            # ------------------------------------------------
-            # Create Google Sheets formula
-            #
-            # IMAGE() displays the actual image.
-            # HYPERLINK() makes the image clickable.
-            # ------------------------------------------------
-
-            if image_url:
-
-                if viewer_url:
-
-                    formula = (
-                        f'=HYPERLINK("{viewer_url}",'
-                        f'IMAGE("{image_url}"))'
-                    )
-
-                else:
-
-                    formula = (
-                        f'=IMAGE("{image_url}")'
-                    )
-
-
-                print(
-                    "Google Sheets image formula:",
-                    formula
-                )
-
-                return formula
-
-
-        # ----------------------------------------------------
-        # Upload failed
-        # ----------------------------------------------------
-
-        print("ImgBB upload FAILED.")
-
-        print(
-            "API result:",
-            result
-        )
-
-        return ""
-
-
-    except requests.exceptions.Timeout:
-
-        print("ImgBB upload TIMEOUT.")
-
-        return ""
-
-
-    except requests.exceptions.RequestException as e:
-
-        print(
-            "ImgBB REQUEST ERROR:",
-            repr(e)
-        )
-
-        return ""
-
+        image_bytes = base64.b64decode(base64_data)
+
+        # Ensure local directory exists
+        os.makedirs("static/photos", exist_ok=True)
+        file_path = os.path.join("static/photos", filename)
+
+        with open(file_path, "wb") as f:
+            f.write(image_bytes)
+
+        # Generate public URL using Render host domain dynamically
+        base_url = request.host_url.rstrip('/')
+        public_url = f"{base_url}/photos/{filename}"
+
+        # Create Google Sheets clickable hyperlink formula
+        formula = f'=HYPERLINK("{public_url}", "📷 View Photo")'
+        print(f"Local photo saved successfully: {public_url}")
+        
+        return formula
 
     except Exception as e:
-
-        print(
-            "ImgBB IMAGE UPLOAD ERROR:",
-            repr(e)
-        )
-
+        print("LOCAL IMAGE SAVE ERROR:", repr(e))
         return ""
+
+
+# ============================================================
+# SERVE LOCAL PHOTOS ROUTE
+# ============================================================
+
+@app.route('/photos/<filename>')
+def serve_photo(filename):
+    return send_from_directory('static/photos', filename)
 
 
 # ============================================================
@@ -369,13 +153,11 @@ def upload_base64_to_imgbb(base64_data, filename):
 
 @app.route("/")
 def index():
-
     with open(
         "index.html",
         "r",
         encoding="utf-8"
     ) as f:
-
         return render_template_string(
             f.read()
         )
@@ -386,9 +168,7 @@ def index():
 # ============================================================
 
 def process_attendance(action):
-
     try:
-
         # ----------------------------------------------------
         # Read JSON request
         # ----------------------------------------------------
@@ -396,84 +176,48 @@ def process_attendance(action):
         data = request.json
 
         if not data:
-
             return jsonify({
-
                 "status": "error",
-
-                "message":
-                "No JSON payload received."
-
+                "message": "No JSON payload received."
             }), 400
 
 
         # ----------------------------------------------------
         # USER ID
-        #
-        # Supports:
-        #
-        # user_id
-        # user_name
         # ----------------------------------------------------
 
         user_id = (
-
             data.get("user_id")
-
             or data.get("user_name")
-
             or "Arvind"
-
         )
 
 
         # ----------------------------------------------------
-        # GPS LATITUDE
+        # GPS LATITUDE & LONGITUDE
         # ----------------------------------------------------
 
         lat = str(
-
             data.get("latitude")
-
             or data.get("lat")
-
             or ""
-
         )
-
-
-        # ----------------------------------------------------
-        # GPS LONGITUDE
-        # ----------------------------------------------------
 
         lon = str(
-
             data.get("longitude")
-
             or data.get("lon")
-
             or ""
-
         )
 
 
         # ----------------------------------------------------
-        # IMAGE
-        #
-        # Supports:
-        #
-        # image
-        # face_image
+        # IMAGE DATA
         # ----------------------------------------------------
 
         image_data = (
-
             data.get("image")
-
             or data.get("face_image")
-
             or ""
-
         )
 
 
@@ -495,19 +239,15 @@ def process_attendance(action):
             timedelta(hours=5, minutes=30)
         )
 
-
         now = datetime.now(IST)
-
 
         date_str = now.strftime(
             "%Y-%m-%d"
         )
 
-
         time_str = now.strftime(
             "%Y-%m-%d %H:%M:%S"
         )
-
 
         file_suffix = now.strftime(
             "%Y%m%d_%H%M%S"
@@ -519,72 +259,40 @@ def process_attendance(action):
         # ====================================================
 
         action_label = (
-
             "IN"
-
             if action == "in"
-
             else (
-
                 "OUT"
-
                 if action == "out"
-
                 else "LEAVE"
-
             )
-
         )
 
-
         photo_filename = (
-
             f"{user_id}_"
             f"{action_label}_"
             f"{file_suffix}.jpg"
-
         )
 
 
         # ====================================================
-        # UPLOAD PHOTO
+        # SAVE PHOTO LOCALLY
         # ====================================================
 
         img_formula = ""
 
-
         if image_data:
-
-            print(
-                "Photo received from browser."
-            )
-
-            img_formula = upload_base64_to_imgbb(
-
+            print("Photo received from browser.")
+            img_formula = save_photo_locally(
                 image_data,
-
                 photo_filename
-
             )
-
             if img_formula:
-
-                print(
-                    "Photo URL/formula generated successfully."
-                )
-
+                print("Photo URL/formula generated successfully.")
             else:
-
-                print(
-                    "WARNING: Photo upload failed. "
-                    "Attendance will continue without photo."
-                )
-
+                print("WARNING: Photo save failed. Attendance will continue without photo.")
         else:
-
-            print(
-                "No photo was included in the request."
-            )
+            print("No photo was included in the request.")
 
 
         # ====================================================
@@ -600,28 +308,18 @@ def process_attendance(action):
 
         target_row = None
 
-
         for idx, row in enumerate(
             records,
             start=2
         ):
-
             if (
-
                 str(row.get("User ID"))
-
                 == str(user_id)
-
                 and
-
                 str(row.get("Date"))
-
                 == date_str
-
             ):
-
                 target_row = idx
-
                 break
 
 
@@ -630,83 +328,35 @@ def process_attendance(action):
         # ====================================================
 
         if action == "leave":
-
             status_val = "On Leave"
 
-
             if target_row:
-
-                sheet.update_cell(
-                    target_row,
-                    3,
-                    status_val
-                )
-
-
-                sheet.update_cell(
-                    target_row,
-                    4,
-                    lat
-                )
-
-
-                sheet.update_cell(
-                    target_row,
-                    5,
-                    lon
-                )
-
-
-                sheet.update_cell(
-                    target_row,
-                    6,
-                    f"Leave: {leave_reason}"
-                )
-
-
+                sheet.update_cell(target_row, 3, status_val)
+                sheet.update_cell(target_row, 4, lat)
+                sheet.update_cell(target_row, 5, lon)
+                sheet.update_cell(target_row, 6, f"Leave: {leave_reason}")
             else:
-
                 row_data = (
-
                     [
-
                         user_id,
-
                         date_str,
-
                         status_val,
-
                         lat,
-
                         lon,
-
                         f"Leave: {leave_reason}"
-
                     ]
-
                     + [""] * 16
-
                     + ["0 hrs"]
-
                 )
-
 
                 sheet.append_row(
-
                     row_data,
-
                     value_input_option="USER_ENTERED"
-
                 )
 
-
             return jsonify({
-
                 "status": "success",
-
-                "message":
-                "Leave status recorded successfully!"
-
+                "message": "Leave status recorded successfully!"
             })
 
 
@@ -716,255 +366,89 @@ def process_attendance(action):
 
         if action == "in":
 
-
-            # ------------------------------------------------
-            # Existing row for today
-            # ------------------------------------------------
-
             if target_row:
-
                 row = records[
                     target_row - 2
                 ]
 
-
-                # --------------------------------------------
-                # Update GPS
-                # --------------------------------------------
-
                 if lat:
-
-                    sheet.update_cell(
-
-                        target_row,
-                        4,
-                        lat
-
-                    )
-
+                    sheet.update_cell(target_row, 4, lat)
 
                 if lon:
+                    sheet.update_cell(target_row, 5, lon)
 
-                    sheet.update_cell(
-
-                        target_row,
-                        5,
-                        lon
-
-                    )
-
-
-                # --------------------------------------------
                 # SESSION 1
-                # --------------------------------------------
-
                 if (
-
                     row.get("Check-In 1")
-
                     and
-
                     not row.get("Check-Out 1")
-
                 ):
-
                     return jsonify({
-
                         "status": "error",
-
-                        "message":
-                        "Please Check Out of Session 1 first."
-
+                        "message": "Please Check Out of Session 1 first."
                     }), 400
 
-
-                # --------------------------------------------
                 # SESSION 2
-                # --------------------------------------------
-
                 elif (
-
                     row.get("Check-Out 1")
-
                     and
-
                     not row.get("Check-In 2")
-
                 ):
+                    sheet.update_cell(target_row, 11, time_str)
+                    sheet.update_cell(target_row, 12, img_formula)
+                    sheet.update_cell(target_row, 3, "In Lab")
 
-                    sheet.update_cell(
-
-                        target_row,
-                        11,
-                        time_str
-
-                    )
-
-
-                    sheet.update_cell(
-
-                        target_row,
-                        12,
-                        img_formula
-
-                    )
-
-
-                    sheet.update_cell(
-
-                        target_row,
-                        3,
-                        "In Lab"
-
-                    )
-
-
-                # --------------------------------------------
                 # SESSION 3
-                # --------------------------------------------
-
                 elif (
-
                     row.get("Check-Out 2")
-
                     and
-
                     not row.get("Check-In 3")
-
                 ):
+                    sheet.update_cell(target_row, 15, time_str)
+                    sheet.update_cell(target_row, 16, img_formula)
+                    sheet.update_cell(target_row, 3, "In Lab")
 
-                    sheet.update_cell(
-
-                        target_row,
-                        15,
-                        time_str
-
-                    )
-
-
-                    sheet.update_cell(
-
-                        target_row,
-                        16,
-                        img_formula
-
-                    )
-
-
-                    sheet.update_cell(
-
-                        target_row,
-                        3,
-                        "In Lab"
-
-                    )
-
-
-                # --------------------------------------------
                 # SESSION 4
-                # --------------------------------------------
-
                 elif (
-
                     row.get("Check-Out 3")
-
                     and
-
                     not row.get("Check-In 4")
-
                 ):
-
-                    sheet.update_cell(
-
-                        target_row,
-                        19,
-                        time_str
-
-                    )
-
-
-                    sheet.update_cell(
-
-                        target_row,
-                        20,
-                        img_formula
-
-                    )
-
-
-                    sheet.update_cell(
-
-                        target_row,
-                        3,
-                        "In Lab"
-
-                    )
-
+                    sheet.update_cell(target_row, 19, time_str)
+                    sheet.update_cell(target_row, 20, img_formula)
+                    sheet.update_cell(target_row, 3, "In Lab")
 
                 else:
-
                     return jsonify({
-
                         "status": "error",
-
-                        "message":
-                        "Maximum 4 check-ins reached for today."
-
+                        "message": "Maximum 4 check-ins reached for today."
                     }), 400
 
-
-            # ------------------------------------------------
-            # First Check-In of the day
-            # ------------------------------------------------
-
             else:
-
+                # First Check-In of the day
                 row_data = (
-
                     [
-
                         user_id,
-
                         date_str,
-
                         "In Lab",
-
                         lat,
-
                         lon,
-
                         "",
-
                         time_str,
-
                         img_formula
-
                     ]
-
                     + [""] * 14
-
                     + ["0 hrs"]
-
                 )
-
 
                 sheet.append_row(
-
                     row_data,
-
                     value_input_option="USER_ENTERED"
-
                 )
 
-
             return jsonify({
-
                 "status": "success",
-
-                "message":
-                "Successfully Checked IN! "
-                "[Live Status: In Lab]"
-
+                "message": "Successfully Checked IN! [Live Status: In Lab]"
             })
 
 
@@ -974,356 +458,149 @@ def process_attendance(action):
 
         elif action == "out":
 
-
-            # ------------------------------------------------
-            # No attendance row
-            # ------------------------------------------------
-
             if not target_row:
-
                 return jsonify({
-
                     "status": "error",
-
-                    "message":
-                    "No active session found for today."
-
+                    "message": "No active session found for today."
                 }), 400
-
 
             row = records[
                 target_row - 2
             ]
 
-
-            # ------------------------------------------------
-            # Determine active session
-            # ------------------------------------------------
-
             co_col_idx = None
-
             photo_col_idx = None
 
-
-            # --------------------------------------------
             # Session 1
-            # --------------------------------------------
-
             if (
-
                 row.get("Check-In 1")
-
                 and
-
                 not row.get("Check-Out 1")
-
             ):
-
                 co_col_idx = 9
-
                 photo_col_idx = 10
 
-
-            # --------------------------------------------
             # Session 2
-            # --------------------------------------------
-
             elif (
-
                 row.get("Check-In 2")
-
                 and
-
                 not row.get("Check-Out 2")
-
             ):
-
                 co_col_idx = 13
-
                 photo_col_idx = 14
 
-
-            # --------------------------------------------
             # Session 3
-            # --------------------------------------------
-
             elif (
-
                 row.get("Check-In 3")
-
                 and
-
                 not row.get("Check-Out 3")
-
             ):
-
                 co_col_idx = 17
-
                 photo_col_idx = 18
 
-
-            # --------------------------------------------
             # Session 4
-            # --------------------------------------------
-
             elif (
-
                 row.get("Check-In 4")
-
                 and
-
                 not row.get("Check-Out 4")
-
             ):
-
                 co_col_idx = 21
-
                 photo_col_idx = 22
 
-
             else:
-
                 return jsonify({
-
                     "status": "error",
-
-                    "message":
-                    "No active check-in session "
-                    "found to check out from."
-
+                    "message": "No active check-in session found to check out from."
                 }), 400
 
-
-            # =================================================
-            # SAVE CHECK-OUT TIME
-            # =================================================
-
-            sheet.update_cell(
-
-                target_row,
-                co_col_idx,
-                time_str
-
-            )
-
-
-            # =================================================
-            # SAVE CHECK-OUT PHOTO
-            # =================================================
+            # Save check-out info
+            sheet.update_cell(target_row, co_col_idx, time_str)
 
             if img_formula:
+                sheet.update_cell(target_row, photo_col_idx, img_formula)
 
-                sheet.update_cell(
+            sheet.update_cell(target_row, 3, "Checked Out")
 
-                    target_row,
-                    photo_col_idx,
-                    img_formula
-
-                )
-
-
-            # =================================================
-            # UPDATE LIVE STATUS
-            # =================================================
-
-            sheet.update_cell(
-
-                target_row,
-                3,
-                "Checked Out"
-
-            )
-
-
-            # =================================================
-            # CALCULATE TOTAL HOURS
-            # =================================================
-
+            # Calculate total hours
             try:
-
-                updated_row = sheet.row_values(
-                    target_row
-                )
-
-
+                updated_row = sheet.row_values(target_row)
                 total_seconds = 0
 
-
-                # ------------------------------------------------
-                # ZERO-BASED INDEXES
-                #
-                # G/I = Session 1
-                # K/M = Session 2
-                # O/Q = Session 3
-                # S/U = Session 4
-                # ------------------------------------------------
-
                 pairs = [
-
                     (6, 8),
-
                     (10, 12),
-
                     (14, 16),
-
                     (18, 20)
-
                 ]
 
-
                 for ci_idx, co_idx in pairs:
-
                     if (
-
                         len(updated_row) > co_idx
-
                         and
-
                         updated_row[ci_idx]
-
                         and
-
                         updated_row[co_idx]
-
                     ):
-
                         t_in = datetime.strptime(
-
                             updated_row[ci_idx],
-
                             "%Y-%m-%d %H:%M:%S"
-
-                        ).replace(
-                            tzinfo=IST
-                        )
-
+                        ).replace(tzinfo=IST)
 
                         t_out = datetime.strptime(
-
                             updated_row[co_idx],
-
                             "%Y-%m-%d %H:%M:%S"
-
-                        ).replace(
-                            tzinfo=IST
-                        )
-
+                        ).replace(tzinfo=IST)
 
                         total_seconds += (
-
                             t_out - t_in
-
                         ).total_seconds()
 
-
                 total_hrs = round(
-
                     total_seconds / 3600,
-
                     2
-
                 )
 
-
-                # ------------------------------------------------
-                # Column W = Total Hours
-                # ------------------------------------------------
-
                 sheet.update_cell(
-
                     target_row,
                     23,
                     f"{total_hrs} hrs"
-
                 )
-
 
             except Exception as ex:
-
-                print(
-                    "Hours calculation error:",
-                    repr(ex)
-                )
-
+                print("Hours calculation error:", repr(ex))
 
             return jsonify({
-
                 "status": "success",
-
-                "message":
-                "Successfully Checked OUT! "
-                "[Live Status: Checked Out]"
-
+                "message": "Successfully Checked OUT! [Live Status: Checked Out]"
             })
 
-
-        # ====================================================
-        # INVALID ACTION
-        # ====================================================
-
         return jsonify({
-
             "status": "error",
-
-            "message":
-            "Invalid action."
-
+            "message": "Invalid action."
         }), 400
 
-
     except Exception as e:
-
-        print(
-            "Error handling attendance:",
-            repr(e)
-        )
-
-
+        print("Error handling attendance:", repr(e))
         return jsonify({
-
             "status": "error",
-
             "message": str(e)
-
         }), 500
 
 
 # ============================================================
-# CHECK-IN ROUTE
+# ROUTES
 # ============================================================
 
-@app.route(
-    "/checkin",
-    methods=["POST"]
-)
+@app.route("/checkin", methods=["POST"])
 def checkin_route():
-
     return process_attendance("in")
 
-
-# ============================================================
-# CHECK-OUT ROUTE
-# ============================================================
-
-@app.route(
-    "/checkout",
-    methods=["POST"]
-)
+@app.route("/checkout", methods=["POST"])
 def checkout_route():
-
     return process_attendance("out")
 
-
-# ============================================================
-# LEAVE ROUTE
-# ============================================================
-
-@app.route(
-    "/leave",
-    methods=["POST"]
-)
+@app.route("/leave", methods=["POST"])
 def leave_route():
-
     return process_attendance("leave")
 
 
@@ -1332,11 +609,7 @@ def leave_route():
 # ============================================================
 
 if __name__ == "__main__":
-
     app.run(
-
         host="0.0.0.0",
-
         port=10000
-
     )
