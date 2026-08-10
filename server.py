@@ -304,6 +304,32 @@ def process_attendance(action):
 
         records = sheet.get_all_records()
 
+        # ====================================================
+        # AUTO-CLOSE OLD OPEN SESSIONS FROM PREVIOUS DAYS
+        # ====================================================
+        try:
+            for idx, row in enumerate(records, start=2):
+                row_user = str(row.get("User ID"))
+                row_date = str(row.get("Date"))
+                live_status = str(row.get("Live Status"))
+
+                # If an older date belongs to this user and is still marked "In Lab"
+                if row_user == str(user_id) and row_date < date_str and live_status == "In Lab":
+                    sheet.update_cell(idx, 3, "Checked-Out-Remained")
+                    print(f"Auto-updated old session on {row_date} for {user_id} to Checked-Out-Remained")
+            
+            # Re-fetch records so updated rows are current for today's processing
+            records = sheet.get_all_records()
+        except Exception as ex:
+            print("Error auto-updating old sessions:", repr(ex))
+
+        # ====================================================
+        # FIND TODAY'S ROW FOR THIS USER
+        # ====================================================
+
+        target_row = None
+        
+        
 
         # ====================================================
         # FIND TODAY'S ROW FOR THIS USER
