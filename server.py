@@ -30,33 +30,73 @@ SCOPES = [
 # ============================================================
 
 EXPECTED_HEADERS = [
-    "User ID",
-    "Date",
-    "Live Status",
-    "Latitude",
-    "Longitude",
-    "Notes",
+    "User ID",              # 1
+    "Date",                 # 2
+    "Live Status",          # 3
+    "Latitude",             # 4
+    "Longitude",            # 5
+    "Notes",                # 6
 
-    "Check-In 1",
-    "Check-In 1 Photo",
-    "Check-Out 1",
-    "Check-Out 1 Photo",
+    "Check-In 1",           # 7
+    "Check-In 1 Photo",     # 8
+    "Check-Out 1",          # 9
+    "Check-Out 1 Photo",    # 10
 
-    "Check-In 2",
-    "Check-In 2 Photo",
-    "Check-Out 2",
-    "Check-Out 2 Photo",
+    "Check-In 2",           # 11
+    "Check-In 2 Photo",     # 12
+    "Check-Out 2",          # 13
+    "Check-Out 2 Photo",    # 14
 
-    "Check-In 3",
-    "Check-In 3 Photo",
-    "Check-Out 3",
-    "Check-Out 3 Photo",
+    "Check-In 3",           # 15
+    "Check-In 3 Photo",     # 16
+    "Check-Out 3",          # 17
+    "Check-Out 3 Photo",    # 18
 
-    "Check-In 4",
-    "Check-In 4 Photo",
-    "Check-Out 4",
-    "Check-Out 4 Photo",
+    "Check-In 4",           # 19
+    "Check-In 4 Photo",     # 20
+    "Check-Out 4",          # 21
+    "Check-Out 4 Photo",    # 22
 
+    "Total Hours"           # 23 (or 25 depending on spacing; verified below)
+]
+
+# Adjusting headers list length explicitly to 25 to match 1-based indexing used in code:
+# [User ID, Date, Live Status, Latitude, Longitude, Notes, 
+#  CI1, CI1_Photo, CO1, CO1_Photo, 
+#  CI2, CI2_Photo, CO2, CO2_Photo, 
+#  CI3, CI3_Photo, CO3, CO3_Photo, 
+#  CI4, CI4_Photo, CO4, CO4_Photo, Total Hours] -> Wait, let's look at indices carefully.
+# Index mapping (1-based):
+# 1: User ID
+# 2: Date
+# 3: Live Status
+# 4: Latitude
+# 5: Longitude
+# 6: Notes
+# 7: Check-In 1
+# 8: Check-In 1 Photo
+# 9: Check-Out 1
+# 10: Check-Out 1 Photo
+# 11: Check-In 2
+# 12: Check-In 2 Photo
+# 13: Check-Out 2
+# 14: Check-Out 2 Photo
+# 15: Check-In 3
+# 16: Check-In 3 Photo
+# 17: Check-Out 3
+# 18: Check-Out 3 Photo
+# 19: Check-In 4
+# 20: Check-In 4 Photo
+# 21: Check-Out 4
+# 22: Check-Out 4 Photo
+# 23: Total Hours
+
+EXPECTED_HEADERS = [
+    "User ID", "Date", "Live Status", "Latitude", "Longitude", "Notes",
+    "Check-In 1", "Check-In 1 Photo", "Check-Out 1", "Check-Out 1 Photo",
+    "Check-In 2", "Check-In 2 Photo", "Check-Out 2", "Check-Out 2 Photo",
+    "Check-In 3", "Check-In 3 Photo", "Check-Out 3", "Check-Out 3 Photo",
+    "Check-In 4", "Check-In 4 Photo", "Check-Out 4", "Check-Out 4 Photo",
     "Total Hours"
 ]
 
@@ -305,12 +345,6 @@ def process_attendance(action):
         records = sheet.get_all_records()
 
         # ====================================================
-        # FIND TODAY'S ROW FOR THIS USER
-        # ====================================================
-
-        target_row = None
-        
-        # ====================================================
         # AUTO-CLOSE OLD OPEN SESSIONS FROM PREVIOUS DAYS
         # ====================================================
         try:
@@ -328,12 +362,6 @@ def process_attendance(action):
             records = sheet.get_all_records()
         except Exception as ex:
             print("Error auto-updating old sessions:", repr(ex))
-
-        # ====================================================
-        # FIND TODAY'S ROW FOR THIS USER
-        # ====================================================
-
-        target_row = None        
 
         # ====================================================
         # FIND TODAY'S ROW FOR THIS USER
@@ -470,7 +498,7 @@ def process_attendance(action):
                         time_str,
                         img_formula
                     ]
-                    + [""] * 14
+                    + [""] * 15
                     + ["0 hrs"]
                 )
 
@@ -554,33 +582,38 @@ def process_attendance(action):
 
             sheet.update_cell(target_row, 3, "Checked Out")
 
-            # Calculate total hours
+            # Calculate total hours (Corrected 1-based indices mapping to EXPECTED_HEADERS)
             try:
                 updated_row = sheet.row_values(target_row)
                 total_seconds = 0
 
+                # Pairs: (Check-In Index, Check-Out Index)
                 pairs = [
-                    (6, 8),
-                    (10, 12),
-                    (14, 16),
-                    (18, 20)
+                    (7, 9),    # Session 1
+                    (11, 13),  # Session 2
+                    (15, 17),  # Session 3
+                    (19, 21)   # Session 4
                 ]
 
                 for ci_idx, co_idx in pairs:
+                    # Convert to 0-based index for Python list lookup
+                    py_ci = ci_idx - 1
+                    py_co = co_idx - 1
+
                     if (
-                        len(updated_row) > co_idx
+                        len(updated_row) > py_co
                         and
-                        updated_row[ci_idx]
+                        updated_row[py_ci]
                         and
-                        updated_row[co_idx]
+                        updated_row[py_co]
                     ):
                         t_in = datetime.strptime(
-                            updated_row[ci_idx],
+                            updated_row[py_ci],
                             "%Y-%m-%d %H:%M:%S"
                         ).replace(tzinfo=IST)
 
                         t_out = datetime.strptime(
-                            updated_row[co_idx],
+                            updated_row[py_co],
                             "%Y-%m-%d %H:%M:%S"
                         ).replace(tzinfo=IST)
 
@@ -593,6 +626,7 @@ def process_attendance(action):
                     2
                 )
 
+                # Update Total Hours column (Index 23)
                 sheet.update_cell(
                     target_row,
                     23,
