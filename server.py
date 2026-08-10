@@ -1,12 +1,17 @@
-import os
-import json
 import base64
-from datetime import datetime, timezone, timedelta
+import json
+import os
+from datetime import datetime, timedelta, timezone
 
-from flask import Flask, request, jsonify, render_template_string, send_from_directory
-import gspread
+from flask import (
+    Flask,
+    jsonify,
+    render_template_string,
+    request,
+    send_from_directory,
+)
 from google.oauth2.service_account import Credentials
-
+import gspread
 
 # ============================================================
 # FLASK APPLICATION
@@ -21,7 +26,7 @@ app = Flask(__name__)
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
+    "https://www.googleapis.com/auth/drive",
 ]
 
 
@@ -30,74 +35,31 @@ SCOPES = [
 # ============================================================
 
 EXPECTED_HEADERS = [
-    "User ID",              # 1
-    "Date",                 # 2
-    "Live Status",          # 3
-    "Latitude",             # 4
-    "Longitude",            # 5
-    "Notes",                # 6
-
-    "Check-In 1",           # 7
-    "Check-In 1 Photo",     # 8
-    "Check-Out 1",          # 9
-    "Check-Out 1 Photo",    # 10
-
-    "Check-In 2",           # 11
-    "Check-In 2 Photo",     # 12
-    "Check-Out 2",          # 13
-    "Check-Out 2 Photo",    # 14
-
-    "Check-In 3",           # 15
-    "Check-In 3 Photo",     # 16
-    "Check-Out 3",          # 17
-    "Check-Out 3 Photo",    # 18
-
-    "Check-In 4",           # 19
-    "Check-In 4 Photo",     # 20
-    "Check-Out 4",          # 21
-    "Check-Out 4 Photo",    # 22
-
-    "Total Hours"           # 23 (or 25 depending on spacing; verified below)
-]
-
-# Adjusting headers list length explicitly to 25 to match 1-based indexing used in code:
-# [User ID, Date, Live Status, Latitude, Longitude, Notes, 
-#  CI1, CI1_Photo, CO1, CO1_Photo, 
-#  CI2, CI2_Photo, CO2, CO2_Photo, 
-#  CI3, CI3_Photo, CO3, CO3_Photo, 
-#  CI4, CI4_Photo, CO4, CO4_Photo, Total Hours] -> Wait, let's look at indices carefully.
-# Index mapping (1-based):
-# 1: User ID
-# 2: Date
-# 3: Live Status
-# 4: Latitude
-# 5: Longitude
-# 6: Notes
-# 7: Check-In 1
-# 8: Check-In 1 Photo
-# 9: Check-Out 1
-# 10: Check-Out 1 Photo
-# 11: Check-In 2
-# 12: Check-In 2 Photo
-# 13: Check-Out 2
-# 14: Check-Out 2 Photo
-# 15: Check-In 3
-# 16: Check-In 3 Photo
-# 17: Check-Out 3
-# 18: Check-Out 3 Photo
-# 19: Check-In 4
-# 20: Check-In 4 Photo
-# 21: Check-Out 4
-# 22: Check-Out 4 Photo
-# 23: Total Hours
-
-EXPECTED_HEADERS = [
-    "User ID", "Date", "Live Status", "Latitude", "Longitude", "Notes",
-    "Check-In 1", "Check-In 1 Photo", "Check-Out 1", "Check-Out 1 Photo",
-    "Check-In 2", "Check-In 2 Photo", "Check-Out 2", "Check-Out 2 Photo",
-    "Check-In 3", "Check-In 3 Photo", "Check-Out 3", "Check-Out 3 Photo",
-    "Check-In 4", "Check-In 4 Photo", "Check-Out 4", "Check-Out 4 Photo",
-    "Total Hours"
+    "User ID",
+    "Date",
+    "Day of Week",
+    "Live Status",
+    "Latitude",
+    "Longitude",
+    "Notes",
+    "Check-In 1",
+    "Check-In 1 Photo",
+    "Check-Out 1",
+    "Check-Out 1 Photo",
+    "Check-In 2",
+    "Check-In 2 Photo",
+    "Check-Out 2",
+    "Check-Out 2 Photo",
+    "Check-In 3",
+    "Check-In 3 Photo",
+    "Check-Out 3",
+    "Check-Out 3 Photo",
+    "Check-In 4",
+    "Check-In 4 Photo",
+    "Check-Out 4",
+    "Check-Out 4 Photo",
+    "Break Taken",
+    "Total Hours",
 ]
 
 
@@ -106,569 +68,472 @@ EXPECTED_HEADERS = [
 # ============================================================
 
 try:
-    credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+  credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 
-    if credentials_json:
-        creds_dict = json.loads(credentials_json)
-        creds = Credentials.from_service_account_info(
-            creds_dict,
-            scopes=SCOPES
-        )
-    else:
-        creds = Credentials.from_service_account_file(
-            "credentials.json",
-            scopes=SCOPES
-        )
+  if credentials_json:
+    creds_dict = json.loads(credentials_json)
+    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+  else:
+    creds = Credentials.from_service_account_file(
+        "credentials.json", scopes=SCOPES
+    )
 
-    client = gspread.authorize(creds)
-    sheet = client.open("Lab Attendance").sheet1
+  client = gspread.authorize(creds)
+  sheet = client.open("Lab Attendance").sheet1
 
+  # --------------------------------------------------------
+  # Automatically verify and set sheet headers
+  # --------------------------------------------------------
 
-    # --------------------------------------------------------
-    # Automatically verify and set sheet headers
-    # --------------------------------------------------------
+  existing_headers = sheet.row_values(1)
 
-    existing_headers = sheet.row_values(1)
-
-    if not existing_headers or len(existing_headers) < len(EXPECTED_HEADERS):
-        sheet.insert_row(EXPECTED_HEADERS, 1)
-        print("Sheet headers initialized successfully!")
-    else:
-        print("Connected to Google Sheets successfully!")
+  if not existing_headers or len(existing_headers) < len(EXPECTED_HEADERS):
+    sheet.insert_row(EXPECTED_HEADERS, 1)
+    print("Sheet headers initialized successfully!")
+  else:
+    print("Connected to Google Sheets successfully!")
 
 
 except Exception as e:
-    print("Google Connection Error:", repr(e))
+  print("Google Connection Error:", repr(e))
 
 
 # ============================================================
 # LOCAL PHOTO STORAGE FUNCTION
 # ============================================================
 
+
 def save_photo_locally(base64_data, filename):
-    try:
-        if not base64_data:
-            print("No image data received.")
-            return ""
+  try:
+    if not base64_data:
+      print("No image data received.")
+      return ""
 
-        if "," in base64_data:
-            base64_data = base64_data.split(",", 1)[1]
+    if "," in base64_data:
+      base64_data = base64_data.split(",", 1)[1]
 
-        image_bytes = base64.b64decode(base64_data)
+    image_bytes = base64.b64decode(base64_data)
 
-        # Ensure local directory exists
-        os.makedirs("static/photos", exist_ok=True)
-        file_path = os.path.join("static/photos", filename)
+    # Ensure local directory exists
+    os.makedirs("static/photos", exist_ok=True)
+    file_path = os.path.join("static/photos", filename)
 
-        with open(file_path, "wb") as f:
-            f.write(image_bytes)
+    with open(file_path, "wb") as f:
+      f.write(image_bytes)
 
-        # Generate public URL using Render host domain dynamically
-        base_url = request.host_url.rstrip('/')
-        public_url = f"{base_url}/photos/{filename}"
+    # Generate public URL using Render host domain dynamically
+    base_url = request.host_url.rstrip("/")
+    public_url = f"{base_url}/photos/{filename}"
 
-        # Create Google Sheets formula rendering both the image thumbnail and hyperlink
-        formula = f'=HYPERLINK("{public_url}", IMAGE("{public_url}"))'
-        print(f"Local photo saved successfully: {public_url}")
-        
-        return formula
+    # Create Google Sheets formula rendering both the image thumbnail and hyperlink
+    formula = f'=HYPERLINK("{public_url}", IMAGE("{public_url}"))'
+    print(f"Local photo saved successfully: {public_url}")
 
-    except Exception as e:
-        print("LOCAL IMAGE SAVE ERROR:", repr(e))
-        return ""
+    return formula
+
+  except Exception as e:
+    print("LOCAL IMAGE SAVE ERROR:", repr(e))
+    return ""
 
 
 # ============================================================
 # SERVE LOCAL PHOTOS ROUTE
 # ============================================================
 
-@app.route('/photos/<filename>')
+
+@app.route("/photos/<filename>")
 def serve_photo(filename):
-    return send_from_directory('static/photos', filename)
+  return send_from_directory("static/photos", filename)
 
 
 # ============================================================
 # HOME PAGE
 # ============================================================
 
+
 @app.route("/")
 def index():
-    with open(
-        "index.html",
-        "r",
-        encoding="utf-8"
-    ) as f:
-        return render_template_string(
-            f.read()
-        )
+  with open("index.html", "r", encoding="utf-8") as f:
+    return render_template_string(f.read())
 
 
 # ============================================================
 # ATTENDANCE PROCESSING
 # ============================================================
 
+
 def process_attendance(action):
+  try:
+    # ----------------------------------------------------
+    # Read JSON request
+    # ----------------------------------------------------
+
+    data = request.json
+
+    if not data:
+      return (
+          jsonify(
+              {"status": "error", "message": "No JSON payload received."}
+          ),
+          400,
+      )
+
+    # ----------------------------------------------------
+    # USER ID
+    # ----------------------------------------------------
+
+    user_id = data.get("user_id") or data.get("user_name") or "Arvind"
+
+    # ----------------------------------------------------
+    # GPS LATITUDE & LONGITUDE
+    # ----------------------------------------------------
+
+    lat = str(data.get("latitude") or data.get("lat") or "")
+
+    lon = str(data.get("longitude") or data.get("lon") or "")
+
+    # ----------------------------------------------------
+    # IMAGE DATA
+    # ----------------------------------------------------
+
+    image_data = data.get("image") or data.get("face_image") or ""
+
+    # ----------------------------------------------------
+    # LEAVE REASON
+    # ----------------------------------------------------
+
+    leave_reason = data.get("leave_reason", "")
+
+    # ====================================================
+    # INDIA TIMEZONE
+    # ====================================================
+
+    IST = timezone(timedelta(hours=5, minutes=30))
+
+    now = datetime.now(IST)
+
+    date_str = now.strftime("%Y-%m-%d")
+    day_str = now.strftime("%a")  # e.g., Mon, Tue, Wed, etc.
+    time_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    file_suffix = now.strftime("%Y%m%d_%H%M%S")
+
+    # ====================================================
+    # PHOTO FILE NAME
+    # ====================================================
+
+    action_label = (
+        "IN"
+        if action == "in"
+        else ("OUT" if action == "out" else "LEAVE")
+    )
+
+    # Sanitize user_id to remove spaces for a clean URL
+    safe_user_id = str(user_id).replace(" ", "_")
+
+    photo_filename = f"{safe_user_id}_{action_label}_{file_suffix}.jpg"
+
+    # ====================================================
+    # SAVE PHOTO LOCALLY
+    # ====================================================
+
+    img_formula = ""
+
+    if image_data:
+      print("Photo received from browser.")
+      img_formula = save_photo_locally(image_data, photo_filename)
+      if img_formula:
+        print("Photo URL/formula generated successfully.")
+      else:
+        print(
+            "WARNING: Photo save failed. Attendance will continue without"
+            " photo."
+        )
+    else:
+      print("No photo was included in the request.")
+
+    # ====================================================
+    # GET EXISTING RECORDS
+    # ====================================================
+
+    records = sheet.get_all_records()
+
+    # ====================================================
+    # AUTO-CLOSE OLD OPEN SESSIONS FROM PREVIOUS DAYS
+    # ====================================================
     try:
-        # ----------------------------------------------------
-        # Read JSON request
-        # ----------------------------------------------------
+      for idx, row in enumerate(records, start=2):
+        row_user = str(row.get("User ID"))
+        row_date = str(row.get("Date"))
+        live_status = str(row.get("Live Status"))
 
-        data = request.json
-
-        if not data:
-            return jsonify({
-                "status": "error",
-                "message": "No JSON payload received."
-            }), 400
-
-
-        # ----------------------------------------------------
-        # USER ID
-        # ----------------------------------------------------
-
-        user_id = (
-            data.get("user_id")
-            or data.get("user_name")
-            or "Arvind"
-        )
-
-
-        # ----------------------------------------------------
-        # GPS LATITUDE & LONGITUDE
-        # ----------------------------------------------------
-
-        lat = str(
-            data.get("latitude")
-            or data.get("lat")
-            or ""
-        )
-
-        lon = str(
-            data.get("longitude")
-            or data.get("lon")
-            or ""
-        )
-
-
-        # ----------------------------------------------------
-        # IMAGE DATA
-        # ----------------------------------------------------
-
-        image_data = (
-            data.get("image")
-            or data.get("face_image")
-            or ""
-        )
-
-
-        # ----------------------------------------------------
-        # LEAVE REASON
-        # ----------------------------------------------------
-
-        leave_reason = data.get(
-            "leave_reason",
-            ""
-        )
-
-
-        # ====================================================
-        # INDIA TIMEZONE
-        # ====================================================
-
-        IST = timezone(
-            timedelta(hours=5, minutes=30)
-        )
-
-        now = datetime.now(IST)
-
-        date_str = now.strftime(
-            "%Y-%m-%d"
-        )
-
-        time_str = now.strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-
-        file_suffix = now.strftime(
-            "%Y%m%d_%H%M%S"
-        )
-
-
-        # ====================================================
-        # PHOTO FILE NAME
-        # ====================================================
-
-        action_label = (
-            "IN"
-            if action == "in"
-            else (
-                "OUT"
-                if action == "out"
-                else "LEAVE"
-            )
-        )
-
-        # Sanitize user_id to remove spaces for a clean URL
-        safe_user_id = str(user_id).replace(" ", "_")
-
-        photo_filename = (
-            f"{safe_user_id}_"
-            f"{action_label}_"
-            f"{file_suffix}.jpg"
-        )
-
-
-        # ====================================================
-        # SAVE PHOTO LOCALLY
-        # ====================================================
-
-        img_formula = ""
-
-        if image_data:
-            print("Photo received from browser.")
-            img_formula = save_photo_locally(
-                image_data,
-                photo_filename
-            )
-            if img_formula:
-                print("Photo URL/formula generated successfully.")
-            else:
-                print("WARNING: Photo save failed. Attendance will continue without photo.")
-        else:
-            print("No photo was included in the request.")
-
-
-        # ====================================================
-        # GET EXISTING RECORDS
-        # ====================================================
-
-        records = sheet.get_all_records()
-
-        # ====================================================
-        # AUTO-CLOSE OLD OPEN SESSIONS FROM PREVIOUS DAYS
-        # ====================================================
-        try:
-            for idx, row in enumerate(records, start=2):
-                row_user = str(row.get("User ID"))
-                row_date = str(row.get("Date"))
-                live_status = str(row.get("Live Status"))
-
-                # If an older date belongs to this user and is still marked "In Lab"
-                if row_user == str(user_id) and row_date < date_str and live_status == "In Lab":
-                    sheet.update_cell(idx, 3, "Checked-Out-Remained")
-                    print(f"Auto-updated old session on {row_date} for {user_id} to Checked-Out-Remained")
-            
-            # Re-fetch records so updated rows are current for today's processing
-            records = sheet.get_all_records()
-        except Exception as ex:
-            print("Error auto-updating old sessions:", repr(ex))
-
-        # ====================================================
-        # FIND TODAY'S ROW FOR THIS USER
-        # ====================================================
-
-        target_row = None
-
-        for idx, row in enumerate(
-            records,
-            start=2
+        if (
+            row_user == str(user_id)
+            and row_date < date_str
+            and live_status == "In Lab"
         ):
-            if (
-                str(row.get("User ID"))
-                == str(user_id)
-                and
-                str(row.get("Date"))
-                == date_str
-            ):
-                target_row = idx
-                break
+          sheet.update_cell(idx, 4, "Checked-Out-Remained")
+          print(
+              f"Auto-updated old session on {row_date} for {user_id} to"
+              " Checked-Out-Remained"
+          )
 
+      records = sheet.get_all_records()
+    except Exception as ex:
+      print("Error auto-updating old sessions:", repr(ex))
 
-        # ====================================================
-        # LEAVE
-        # ====================================================
+    # ====================================================
+    # FIND TODAY'S ROW FOR THIS USER
+    # ====================================================
 
-        if action == "leave":
-            status_val = "On Leave"
+    target_row = None
 
-            if target_row:
-                sheet.update_cell(target_row, 3, status_val)
-                sheet.update_cell(target_row, 4, lat)
-                sheet.update_cell(target_row, 5, lon)
-                sheet.update_cell(target_row, 6, f"Leave: {leave_reason}")
-            else:
-                row_data = (
-                    [
-                        user_id,
-                        date_str,
-                        status_val,
-                        lat,
-                        lon,
-                        f"Leave: {leave_reason}"
-                    ]
-                    + [""] * 16
-                    + ["0 hrs"]
-                )
+    for idx, row in enumerate(records, start=2):
+      if str(row.get("User ID")) == str(user_id) and str(row.get("Date")) == str(
+          date_str
+      ):
+        target_row = idx
+        break
 
-                sheet.append_row(
-                    row_data,
-                    value_input_option="USER_ENTERED"
-                )
+    # ====================================================
+    # LEAVE
+    # ====================================================
 
-            return jsonify({
-                "status": "success",
-                "message": "Leave status recorded successfully!"
-            })
+    if action == "leave":
+      status_val = "On Leave"
 
-
-        # ====================================================
-        # CHECK IN
-        # ====================================================
-
-        if action == "in":
-
-            if target_row:
-                row = records[
-                    target_row - 2
-                ]
-
-                if lat:
-                    sheet.update_cell(target_row, 4, lat)
-
-                if lon:
-                    sheet.update_cell(target_row, 5, lon)
-
-                # SESSION 1
-                if (
-                    row.get("Check-In 1")
-                    and
-                    not row.get("Check-Out 1")
-                ):
-                    return jsonify({
-                        "status": "error",
-                        "message": "Please Check Out of Session 1 first."
-                    }), 400
-
-                # SESSION 2
-                elif (
-                    row.get("Check-Out 1")
-                    and
-                    not row.get("Check-In 2")
-                ):
-                    sheet.update_cell(target_row, 11, time_str)
-                    sheet.update_cell(target_row, 12, img_formula)
-                    sheet.update_cell(target_row, 3, "In Lab")
-
-                # SESSION 3
-                elif (
-                    row.get("Check-Out 2")
-                    and
-                    not row.get("Check-In 3")
-                ):
-                    sheet.update_cell(target_row, 15, time_str)
-                    sheet.update_cell(target_row, 16, img_formula)
-                    sheet.update_cell(target_row, 3, "In Lab")
-
-                # SESSION 4
-                elif (
-                    row.get("Check-Out 3")
-                    and
-                    not row.get("Check-In 4")
-                ):
-                    sheet.update_cell(target_row, 19, time_str)
-                    sheet.update_cell(target_row, 20, img_formula)
-                    sheet.update_cell(target_row, 3, "In Lab")
-
-                else:
-                    return jsonify({
-                        "status": "error",
-                        "message": "Maximum 4 check-ins reached for today."
-                    }), 400
-
-            else:
-                # First Check-In of the day
-                row_data = (
-                    [
-                        user_id,
-                        date_str,
-                        "In Lab",
-                        lat,
-                        lon,
-                        "",
-                        time_str,
-                        img_formula
-                    ]
-                    + [""] * 15
-                    + ["0 hrs"]
-                )
-
-                sheet.append_row(
-                    row_data,
-                    value_input_option="USER_ENTERED"
-                )
-
-            return jsonify({
-                "status": "success",
-                "message": "Successfully Checked IN! [Live Status: In Lab]"
-            })
-
-
-        # ====================================================
-        # CHECK OUT
-        # ====================================================
-
-        elif action == "out":
-
-            if not target_row:
-                return jsonify({
-                    "status": "error",
-                    "message": "No active session found for today."
-                }), 400
-
-            row = records[
-                target_row - 2
+      if target_row:
+        sheet.update_cell(target_row, 4, status_val)
+        sheet.update_cell(target_row, 5, lat)
+        sheet.update_cell(target_row, 6, lon)
+        sheet.update_cell(target_row, 7, f"Leave: {leave_reason}")
+      else:
+        row_data = (
+            [
+                user_id,
+                date_str,
+                day_str,
+                status_val,
+                lat,
+                lon,
+                f"Leave: {leave_reason}",
             ]
+            + [""] * 17
+            + ["0 hrs", "0 hrs"]
+        )
 
-            co_col_idx = None
-            photo_col_idx = None
+        sheet.append_row(row_data, value_input_option="USER_ENTERED")
 
-            # Session 1
-            if (
-                row.get("Check-In 1")
-                and
-                not row.get("Check-Out 1")
-            ):
-                co_col_idx = 9
-                photo_col_idx = 10
+      return jsonify(
+          {"status": "success", "message": "Leave status recorded successfully!"}
+      )
 
-            # Session 2
-            elif (
-                row.get("Check-In 2")
-                and
-                not row.get("Check-Out 2")
-            ):
-                co_col_idx = 13
-                photo_col_idx = 14
+    # ====================================================
+    # CHECK IN
+    # ====================================================
 
-            # Session 3
-            elif (
-                row.get("Check-In 3")
-                and
-                not row.get("Check-Out 3")
-            ):
-                co_col_idx = 17
-                photo_col_idx = 18
+    if action == "in":
 
-            # Session 4
-            elif (
-                row.get("Check-In 4")
-                and
-                not row.get("Check-Out 4")
-            ):
-                co_col_idx = 21
-                photo_col_idx = 22
+      if target_row:
+        row = records[target_row - 2]
 
-            else:
-                return jsonify({
-                    "status": "error",
-                    "message": "No active check-in session found to check out from."
-                }), 400
+        if lat:
+          sheet.update_cell(target_row, 5, lat)
 
-            # Save check-out info
-            sheet.update_cell(target_row, co_col_idx, time_str)
+        if lon:
+          sheet.update_cell(target_row, 6, lon)
 
-            if img_formula:
-                sheet.update_cell(target_row, photo_col_idx, img_formula)
+        # SESSION 1
+        if row.get("Check-In 1") and not row.get("Check-Out 1"):
+          return (
+              jsonify({
+                  "status": "error",
+                  "message": "Please Check Out of Session 1 first.",
+              }),
+              400,
+          )
 
-            sheet.update_cell(target_row, 3, "Checked Out")
+        # SESSION 2
+        elif row.get("Check-Out 1") and not row.get("Check-In 2"):
+          sheet.update_cell(target_row, 12, time_str)
+          sheet.update_cell(target_row, 13, img_formula)
+          sheet.update_cell(target_row, 4, "In Lab")
 
-            # Calculate total hours (Corrected 1-based indices mapping to EXPECTED_HEADERS)
-            try:
-                updated_row = sheet.row_values(target_row)
-                total_seconds = 0
+        # SESSION 3
+        elif row.get("Check-Out 2") and not row.get("Check-In 3"):
+          sheet.update_cell(target_row, 16, time_str)
+          sheet.update_cell(target_row, 17, img_formula)
+          sheet.update_cell(target_row, 4, "In Lab")
 
-                # Pairs: (Check-In Index, Check-Out Index)
-                pairs = [
-                    (7, 9),    # Session 1
-                    (11, 13),  # Session 2
-                    (15, 17),  # Session 3
-                    (19, 21)   # Session 4
-                ]
+        # SESSION 4
+        elif row.get("Check-Out 3") and not row.get("Check-In 4"):
+          sheet.update_cell(target_row, 20, time_str)
+          sheet.update_cell(target_row, 21, img_formula)
+          sheet.update_cell(target_row, 4, "In Lab")
 
-                for ci_idx, co_idx in pairs:
-                    # Convert to 0-based index for Python list lookup
-                    py_ci = ci_idx - 1
-                    py_co = co_idx - 1
+        else:
+          return (
+              jsonify({
+                  "status": "error",
+                  "message": "Maximum 4 check-ins reached for today.",
+              }),
+              400,
+          )
 
-                    if (
-                        len(updated_row) > py_co
-                        and
-                        updated_row[py_ci]
-                        and
-                        updated_row[py_co]
-                    ):
-                        t_in = datetime.strptime(
-                            updated_row[py_ci],
-                            "%Y-%m-%d %H:%M:%S"
-                        ).replace(tzinfo=IST)
+      else:
+        # First Check-In of the day
+        row_data = (
+            [
+                user_id,
+                date_str,
+                day_str,
+                "In Lab",
+                lat,
+                lon,
+                "",
+                time_str,
+                img_formula,
+            ]
+            + [""] * 14
+            + ["0 hrs", "0 hrs"]
+        )
 
-                        t_out = datetime.strptime(
-                            updated_row[py_co],
-                            "%Y-%m-%d %H:%M:%S"
-                        ).replace(tzinfo=IST)
+        sheet.append_row(row_data, value_input_option="USER_ENTERED")
 
-                        total_seconds += (
-                            t_out - t_in
-                        ).total_seconds()
+      return jsonify({
+          "status": "success",
+          "message": "Successfully Checked IN! [Live Status: In Lab]",
+      })
 
-                total_hrs = round(
-                    total_seconds / 3600,
-                    2
-                )
+    # ====================================================
+    # CHECK OUT
+    # ====================================================
 
-                # Update Total Hours column (Index 23)
-                sheet.update_cell(
-                    target_row,
-                    23,
-                    f"{total_hrs} hrs"
-                )
+    elif action == "out":
 
-            except Exception as ex:
-                print("Hours calculation error:", repr(ex))
+      if not target_row:
+        return (
+            jsonify({
+                "status": "error",
+                "message": "No active session found for today.",
+            }),
+            400,
+        )
 
-            return jsonify({
-                "status": "success",
-                "message": "Successfully Checked OUT! [Live Status: Checked Out]"
-            })
+      row = records[target_row - 2]
 
-        return jsonify({
-            "status": "error",
-            "message": "Invalid action."
-        }), 400
+      co_col_idx = None
+      photo_col_idx = None
 
-    except Exception as e:
-        print("Error handling attendance:", repr(e))
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+      # Session 1
+      if row.get("Check-In 1") and not row.get("Check-Out 1"):
+        co_col_idx = 10
+        photo_col_idx = 11
+
+      # Session 2
+      elif row.get("Check-In 2") and not row.get("Check-Out 2"):
+        co_col_idx = 14
+        photo_col_idx = 15
+
+      # Session 3
+      elif row.get("Check-In 3") and not row.get("Check-Out 3"):
+        co_col_idx = 18
+        photo_col_idx = 19
+
+      # Session 4
+      elif row.get("Check-In 4") and not row.get("Check-Out 4"):
+        co_col_idx = 22
+        photo_col_idx = 23
+
+      else:
+        return (
+            jsonify({
+                "status": "error",
+                "message": (
+                    "No active check-in session found to check out from."
+                ),
+            }),
+            400,
+        )
+
+      # Save check-out info
+      sheet.update_cell(target_row, co_col_idx, time_str)
+
+      if img_formula:
+        sheet.update_cell(target_row, photo_col_idx, img_formula)
+
+      sheet.update_cell(target_row, 4, "Checked Out")
+
+      # Calculate total hours and breaks taken
+      try:
+        updated_row = sheet.row_values(target_row)
+        work_seconds = 0
+        break_seconds = 0
+
+        work_pairs = [(7, 9), (11, 13), (15, 17), (19, 21)]
+        session_times = []
+
+        for ci_idx, co_idx in work_pairs:
+          if (
+              len(updated_row) > co_idx
+              and updated_row[ci_idx]
+              and updated_row[co_idx]
+          ):
+            t_in = datetime.strptime(
+                updated_row[ci_idx], "%Y-%m-%d %H:%M:%S"
+            ).replace(tzinfo=IST)
+            t_out = datetime.strptime(
+                updated_row[co_idx], "%Y-%m-%d %H:%M:%S"
+            ).replace(tzinfo=IST)
+            work_seconds += (t_out - t_in).total_seconds()
+            session_times.append((t_in, t_out))
+
+        # Calculate breaks between completed sessions
+        session_times.sort(key=lambda x: x[0])
+        for i in range(len(session_times) - 1):
+          t_out_prev = session_times[i][1]
+          t_in_next = session_times[i + 1][0]
+          if t_in_next > t_out_prev:
+            break_seconds += (t_in_next - t_out_prev).total_seconds()
+
+        total_hrs = round(work_seconds / 3600, 2)
+        break_hrs = round(break_seconds / 3600, 2)
+
+        sheet.update_cell(target_row, 25, f"{total_hrs} hrs")
+        sheet.update_cell(target_row, 24, f"{break_hrs} hrs")
+
+      except Exception as ex:
+        print("Hours/Break calculation error:", repr(ex))
+
+      return jsonify({
+          "status": "success",
+          "message": "Successfully Checked OUT! [Live Status: Checked Out]",
+      })
+
+    return jsonify({"status": "error", "message": "Invalid action."}), 400
+
+  except Exception as e:
+    print("Error handling attendance:", repr(e))
+    return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # ============================================================
 # ROUTES
 # ============================================================
 
+
 @app.route("/checkin", methods=["POST"])
 def checkin_route():
-    return process_attendance("in")
+  return process_attendance("in")
+
 
 @app.route("/checkout", methods=["POST"])
 def checkout_route():
-    return process_attendance("out")
+  return process_attendance("out")
+
 
 @app.route("/leave", methods=["POST"])
 def leave_route():
-    return process_attendance("leave")
+  return process_attendance("leave")
 
 
 # ============================================================
@@ -676,7 +541,4 @@ def leave_route():
 # ============================================================
 
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=10000
-    )
+  app.run(host="0.0.0.0", port=10000)
