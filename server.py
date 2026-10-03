@@ -279,7 +279,7 @@ def process_attendance(action):
                     print(f"Auto-updated old session on {row_date} at row {i + 1} to Checked-Out-Remained")
         
         # Refresh records for today's processing
-        records = sheet.get_all_records()
+        #records = sheet.get_all_records()
     except Exception as ex:
         print("Error auto-updating old sessions:", repr(ex))
     # ====================================================
