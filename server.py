@@ -267,7 +267,7 @@ def process_attendance(action):
         live_status = str(row.get("Live Status"))
 
         if (
-            row_user == str(user_id)
+            row_date
             and row_date < date_str
             and live_status == "In Lab"
         ):
