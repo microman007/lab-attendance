@@ -258,29 +258,30 @@ def process_attendance(action):
     records = sheet.get_all_records()
 
     # ====================================================
-    # AUTO-CLOSE OLD OPEN SESSIONS FROM PREVIOUS DAYS
+    # AUTO-CLOSE OLD OPEN SESSIONS FROM PREVIOUS DAYS (ROBUST FIX)
     # ====================================================
     try:
-      for idx, row in enumerate(records, start=2):
-        row_user = str(row.get("User ID"))
-        row_date = str(row.get("Date"))
-        live_status = str(row.get("Live Status"))
-
-        if (
-            row_date
-            and row_date < date_str
-            and live_status == "In Lab"
-        ):
-          sheet.update_cell(idx, 4, "Checked-Out-Remained")
-          print(
-              f"Auto-updated old session on {row_date} for {user_id} to"
-              " Checked-Out-Remained"
-          )
-
-      records = sheet.get_all_records()
+        # Fetch all values as raw lists to avoid dictionary key/whitespace mismatches
+        all_rows = sheet.get_all_values()
+        
+        # Skip header row (index 0), process data rows starting from row index 1 (Sheet Row 2)
+        for i in range(1, len(all_rows)):
+            row = all_rows[i]
+            
+            # Ensure the row has enough columns to check Date (Col B / index 1) and Live Status (Col D / index 3)
+            if len(row) > 3:
+                row_date = row[1].strip()      # Column B: Date
+                live_status = row[3].strip()   # Column D: Live Status
+                
+                # If a past date still says "In Lab", update it
+                if row_date and row_date < date_str and live_status == "In Lab":
+                    sheet.update_cell(i + 1, 4, "Checked-Out-Remained")
+                    print(f"Auto-updated old session on {row_date} at row {i + 1} to Checked-Out-Remained")
+        
+        # Refresh records for today's processing
+        records = sheet.get_all_records()
     except Exception as ex:
-      print("Error auto-updating old sessions:", repr(ex))
-
+        print("Error auto-updating old sessions:", repr(ex))
     # ====================================================
     # FIND TODAY'S ROW FOR THIS USER
     # ====================================================
